@@ -10,11 +10,17 @@ export interface Bar {
   volume: number | null;
 }
 
+export interface Dividend {
+  date: string; // fecha ex-dividendo
+  amount: number; // por acción, en la moneda del instrumento
+}
+
 export interface YahooChart {
   symbol: string;
   name: string;
   currency: string;
   bars: Bar[];
+  dividends: Dividend[];
 }
 
 export class YahooNotFound extends Error {}
@@ -25,7 +31,7 @@ export async function fetchChart(
   symbol: string,
   opts: { from?: Date; range?: string } = {},
 ): Promise<YahooChart> {
-  const params = new URLSearchParams({ interval: '1d' });
+  const params = new URLSearchParams({ interval: '1d', events: 'div,split' });
   if (opts.from) {
     params.set('period1', String(Math.floor(opts.from.getTime() / 1000)));
     params.set('period2', String(Math.floor(Date.now() / 1000) + 86_400));
@@ -44,6 +50,7 @@ export async function fetchChart(
 
   const meta = result.meta ?? {};
   const offset: number = meta.gmtoffset ?? -10_800;
+  const toDate = (t: number) => new Date((t + offset) * 1000).toISOString().slice(0, 10);
   const timestamps: number[] = result.timestamp ?? [];
   const q = result.indicators?.quote?.[0] ?? {};
 
@@ -52,7 +59,7 @@ export async function fetchChart(
   timestamps.forEach((t, i) => {
     const close = q.close?.[i];
     if (close == null || !(close > 0)) return;
-    const date = new Date((t + offset) * 1000).toISOString().slice(0, 10);
+    const date = toDate(t);
     byDate.set(date, {
       date,
       open: q.open?.[i] ?? null,
@@ -63,10 +70,15 @@ export async function fetchChart(
     });
   });
 
+  const dividends = Object.values((result.events?.dividends ?? {}) as Record<string, { date: number; amount: number }>)
+    .filter((d) => d.amount > 0)
+    .map((d) => ({ date: toDate(d.date), amount: d.amount }));
+
   return {
     symbol,
     name: meta.longName ?? meta.shortName ?? symbol,
     currency: meta.currency ?? 'ARS',
     bars: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    dividends,
   };
 }

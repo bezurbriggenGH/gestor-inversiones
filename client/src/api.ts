@@ -1,7 +1,13 @@
 export type Currency = 'ARS' | 'USD';
 export type FxKind = 'bolsa' | 'contadoconliqui';
 export type AssetType = 'ACCION' | 'CEDEAR';
-export type OperationType = 'COMPRA' | 'VENTA';
+export type OperationType = 'COMPRA' | 'VENTA' | 'DIVIDENDO';
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+}
 
 export interface Position {
   quantity: number;
@@ -14,6 +20,7 @@ export interface Position {
   unrealized: number;
   unrealizedPct: number;
   realized: number;
+  dividends: number;
   totalGain: number;
   totalGainPct: number;
   dayChange: number;
@@ -43,11 +50,13 @@ export interface Portfolio {
     unrealized: number;
     unrealizedPct: number;
     realized: number;
+    dividends: number;
     totalGain: number;
     totalGainPct: number;
     dayChange: number;
     dayChangePct: number;
   };
+  realReturn: { gain: number; pct: number } | null;
   positions: PortfolioPosition[];
   lastSync: number | null;
   errors: string[];
@@ -78,6 +87,15 @@ export interface PricePoint {
   volume: number | null;
 }
 
+export interface PendingDividend {
+  date: string;
+  amountPerShare: number;
+  quantity: number;
+  gross: number;
+  withholding: number;
+  withholdingRate: number;
+}
+
 export interface AssetDetail {
   currency: Currency;
   fxKind: FxKind;
@@ -86,6 +104,7 @@ export interface AssetDetail {
   position: Position;
   operations: Operation[];
   series: PricePoint[];
+  pendingDividends: PendingDividend[];
 }
 
 export interface OperationDetail {
@@ -106,31 +125,142 @@ export interface NewOperation {
   note_link: string;
 }
 
+export type BenchmarkKey = 'inflacion' | 'dolar' | 'plazofijo' | 'merval' | 'spy';
+
+export interface History {
+  currency: Currency;
+  points: { date: string; value: number; netInvested: number; benchmarks: Record<BenchmarkKey, number | null> }[];
+  benchmarks: {
+    key: BenchmarkKey;
+    label: string;
+    description: string;
+    available: boolean;
+    value: number | null;
+    diff: number | null;
+    diffPct: number | null;
+    irr: number | null;
+    lastDataDate: string | null;
+  }[];
+  portfolio: { value: number; netInvested: number; gain: number; irr: number | null } | null;
+  realReturn: { gain: number; pct: number } | null;
+}
+
+export type Verdict = 'ACIERTO' | 'ERROR' | 'NEUTRAL';
+
+export interface JournalEntry {
+  id: number;
+  ticker: string;
+  type: 'COMPRA' | 'VENTA';
+  date: string;
+  quantity: number;
+  price: number;
+  note_title: string | null;
+  note_body: string | null;
+  hasNote: boolean;
+  horizons: ({ days: number; available: false } | { days: number; available: true; price: number; change: number; verdict: Verdict })[];
+  sinceChange: number | null;
+  verdict: Verdict | null;
+  verdictDays: number | null;
+}
+
+export interface JournalStats {
+  total: number;
+  judged: number;
+  hits: number;
+  misses: number;
+  neutral: number;
+  pending: number;
+  hitRate: number | null;
+}
+
+export interface Journal {
+  currency: Currency;
+  entries: JournalEntry[];
+  stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote', JournalStats>;
+}
+
+export interface SearchResult {
+  ticker: string;
+  name: string;
+  type: AssetType;
+  sector?: string;
+  owned: boolean;
+}
+
+export interface Alert {
+  id: number;
+  ticker: string;
+  direction: 'ARRIBA' | 'ABAJO';
+  price: number;
+  created_at: string;
+  triggered_at: string | null;
+  trigger_price: number | null;
+  seen: number;
+  current: number | null;
+}
+
+export interface ImportResult {
+  committed: boolean;
+  columns: Record<string, string | null>;
+  rows: {
+    line: number;
+    date: string | null;
+    type: OperationType | null;
+    ticker: string | null;
+    quantity: number | null;
+    price: number | null;
+    fees: number;
+    note: string | null;
+    errors: string[];
+    status: 'ok' | 'error' | 'duplicada';
+  }[];
+  summary: { total: number; ok: number; errors: number; duplicates: number };
+}
+
+export class AuthError extends Error {}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new AuthError(body.error ?? 'Sin sesión');
   if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
   return body as T;
 }
 
+const post = <T>(path: string, data?: unknown) =>
+  request<T>(path, { method: 'POST', body: data === undefined ? undefined : JSON.stringify(data) });
+const del = (path: string) => request<void>(path, { method: 'DELETE' });
 const q = (c: Currency, k: FxKind) => `currency=${c}&fx=${k}`;
 
 export const api = {
+  me: () => request<User>('/auth/me'),
+  login: (email: string, password: string) => post<User>('/auth/login', { email, password }),
+  register: (name: string, email: string, password: string) => post<User>('/auth/register', { name, email, password }),
+  logout: () => post<void>('/auth/logout'),
+
   portfolio: (c: Currency, k: FxKind) => request<Portfolio>(`/portfolio?${q(c, k)}`),
+  history: (c: Currency, k: FxKind) => request<History>(`/history?${q(c, k)}`),
+  journal: (c: Currency, k: FxKind) => request<Journal>(`/journal?${q(c, k)}`),
+  search: (text: string) => request<SearchResult[]>(`/search?q=${encodeURIComponent(text)}`),
+
   asset: (t: string, c: Currency, k: FxKind) => request<AssetDetail>(`/assets/${t}?${q(c, k)}`),
-  addAsset: (ticker: string) =>
-    request<{ ticker: string; name: string; type: AssetType }>('/assets', {
-      method: 'POST',
-      body: JSON.stringify({ ticker }),
-    }),
-  deleteAsset: (t: string) => request<void>(`/assets/${t}`, { method: 'DELETE' }),
+  addAsset: (ticker: string) => post<{ ticker: string; name: string; type: AssetType }>('/assets', { ticker }),
+  deleteAsset: (t: string) => del(`/assets/${t}`),
   priceAt: (t: string, date: string) => request<{ date: string; close: number }>(`/assets/${t}/price?date=${date}`),
-  addOperation: (t: string, op: NewOperation) =>
-    request<{ id: number }>(`/assets/${t}/operations`, { method: 'POST', body: JSON.stringify(op) }),
+
+  addOperation: (t: string, op: NewOperation) => post<{ id: number }>(`/assets/${t}/operations`, op),
   operation: (id: number, c: Currency, k: FxKind) => request<OperationDetail>(`/operations/${id}?${q(c, k)}`),
-  deleteOperation: (id: number) => request<void>(`/operations/${id}`, { method: 'DELETE' }),
+  deleteOperation: (id: number) => del(`/operations/${id}`),
+
+  alerts: () => request<Alert[]>('/alerts'),
+  addAlert: (ticker: string, direction: 'ARRIBA' | 'ABAJO', price: number) => post<{ id: number }>('/alerts', { ticker, direction, price }),
+  deleteAlert: (id: number) => del(`/alerts/${id}`),
+  markAlertsSeen: () => post<void>('/alerts/seen'),
+
+  importCsv: (csv: string, commit: boolean) => post<ImportResult>('/import', { csv, commit }),
 };

@@ -5,8 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: Number(process.env.PORT ?? 5173),
     // El frontend le pide /api/... a Vite y Vite se lo pasa al backend
-    proxy: { '/api': 'http://localhost:3001' },
+    proxy: { '/api': process.env.API_URL ?? 'http://localhost:3001' },
   },
 });

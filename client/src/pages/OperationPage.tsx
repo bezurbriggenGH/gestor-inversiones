@@ -1,10 +1,11 @@
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
-import { useOperation } from '../hooks';
+import { api, type OperationType } from '../api';
+import { DATA_KEYS, useJournal, useOperation } from '../hooks';
 import { useSettings } from '../settings';
 import { FX_LABEL, date, money, num, tone } from '../format';
 import { Button, ErrorBox, Loading } from '../components/ui';
+import { HorizonList, VerdictBadge, explainVerdict } from '../components/Verdict';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -15,18 +16,20 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+const TYPE_STYLE: Record<OperationType, string> = { COMPRA: 'text-up', VENTA: 'text-down', DIVIDENDO: 'text-link' };
+
 export function OperationPage() {
   const { id = '' } = useParams();
   const { currency, fxKind } = useSettings();
   const { data, isLoading, error } = useOperation(Number(id));
+  const journal = useJournal();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
   const remove = useMutation({
     mutationFn: () => api.deleteOperation(Number(id)),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['asset'] });
-      qc.invalidateQueries({ queryKey: ['portfolio'] });
+      DATA_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
       navigate(`/activo/${data?.asset.ticker}`, { replace: true });
     },
   });
@@ -34,7 +37,8 @@ export function OperationPage() {
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
   const op = data.operation;
-  const isSell = op.type === 'VENTA';
+  const isDividend = op.type === 'DIVIDENDO';
+  const entry = journal.data?.entries.find((e) => e.id === op.id);
 
   return (
     <div className="flex flex-col gap-8">
@@ -42,61 +46,65 @@ export function OperationPage() {
         <button onClick={() => navigate(-1)} className="text-2xl text-muted hover:text-text" aria-label="Volver">
           ←
         </button>
-        <h1 className="flex-1 rounded-md bg-card py-1.5 text-center text-sm">
-          Historial · {data.asset.ticker}
-        </h1>
+        <h1 className="flex-1 rounded-md bg-card py-1.5 text-center text-sm">Historial · {data.asset.ticker}</h1>
       </div>
 
       <section className="grid gap-6 px-1 sm:grid-cols-2 lg:grid-cols-4">
         <Row label="ID">{op.id}</Row>
         <Row label="Fecha">{date(op.date)}</Row>
         <Row label="Tipo de operación">
-          <span className={isSell ? 'text-down' : 'text-up'}>{isSell ? 'VENTA' : 'COMPRA'}</span>
+          <span className={TYPE_STYLE[op.type]}>{op.type}</span>
         </Row>
-        <Row label="Cantidad">{num(op.quantity)}</Row>
-        <Row label="Precio unitario">
+        <Row label={isDividend ? 'Acciones' : 'Cantidad'}>{num(op.quantity)}</Row>
+        <Row label={isDividend ? 'Dividendo por acción' : 'Precio unitario'}>
           <span className="text-up">{money(op.priceConv, currency)}</span>
         </Row>
-        <Row label="Comisiones">{money(op.feesConv, currency)}</Row>
-        <Row label={isSell ? 'Monto cobrado (neto)' : 'Monto total pagado'}>
+        <Row label={isDividend ? 'Retenciones' : 'Comisiones'}>{money(op.feesConv, currency)}</Row>
+        <Row label={op.type === 'COMPRA' ? 'Monto total pagado' : 'Monto cobrado (neto)'}>
           <span className="text-up">{money(op.totalConv, currency)}</span>
         </Row>
-        {isSell && op.realized != null && (
+        {op.type === 'VENTA' && op.realized != null && (
           <Row label="Resultado de la venta">
             <span className={tone(op.realized)}>{money(op.realized, currency, true)}</span>
           </Row>
         )}
-        {op.fxRate != null && (
-          <Row label={`Dólar ${FX_LABEL[fxKind]} ese día`}>{money(op.fxRate, 'ARS')}</Row>
-        )}
-        {currency === 'USD' && (
-          <Row label="Precio cargado (ARS)">{money(op.price, 'ARS')}</Row>
-        )}
+        {op.fxRate != null && <Row label={`Dólar ${FX_LABEL[fxKind]} ese día`}>{money(op.fxRate, 'ARS')}</Row>}
+        {currency === 'USD' && <Row label="Precio cargado (ARS)">{money(op.price, 'ARS')}</Row>}
       </section>
 
-      <hr className="border-line" />
+      {entry && (
+        <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-medium">¿Acertaste?</h2>
+            <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} />
+          </div>
+          <p className="text-sm text-muted">{explainVerdict(entry)}</p>
+          <HorizonList entry={entry} />
+        </section>
+      )}
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">{op.note_title ?? 'Sin justificación'}</h2>
-        {op.note_body ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-text/85">{op.note_body}</p>
-        ) : (
-          !op.note_title && <p className="text-sm text-muted">No dejaste notas sobre esta operación.</p>
-        )}
-        {op.note_link && (
-          <a href={op.note_link} target="_blank" rel="noreferrer" className="break-all text-sm text-link hover:underline">
-            {op.note_link}
-          </a>
-        )}
-      </section>
+      {!isDividend && (
+        <>
+          <hr className="border-line" />
+          <section className="flex flex-col gap-4">
+            <h2 className="text-lg font-medium">{op.note_title ?? 'Sin justificación'}</h2>
+            {op.note_body ? (
+              <p className="whitespace-pre-line text-sm leading-relaxed text-text/85">{op.note_body}</p>
+            ) : (
+              !op.note_title && <p className="text-sm text-muted">No dejaste notas sobre esta operación.</p>
+            )}
+            {op.note_link && (
+              <a href={op.note_link} target="_blank" rel="noreferrer" className="break-all text-sm text-link hover:underline">
+                {op.note_link}
+              </a>
+            )}
+          </section>
+        </>
+      )}
 
       <ErrorBox error={remove.error} />
       <div>
-        <Button
-          variant="danger"
-          disabled={remove.isPending}
-          onClick={() => window.confirm('¿Borrar esta operación?') && remove.mutate()}
-        >
+        <Button variant="danger" disabled={remove.isPending} onClick={() => window.confirm('¿Borrar esta operación?') && remove.mutate()}>
           Borrar operación
         </Button>
       </div>

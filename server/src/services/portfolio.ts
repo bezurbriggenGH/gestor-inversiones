@@ -5,29 +5,30 @@
 //   (precio × cantidad + comisiones). Al vender, sale costo a precio promedio.
 // - Resultado realizado: lo que ganaste/perdiste en ventas ya hechas
 //   (lo cobrado neto de comisiones − costo promedio de lo vendido).
+// - Dividendos: ingreso aparte, neto de retenciones. No cambian el costo.
 // - Resultado no realizado: valor de mercado de lo que tenés − su costo.
 // - En dólares, cada monto se convierte con el dólar DEL DÍA en que ocurrió.
-//   Así se ve si le ganaste al dólar, no solo a los pesos.
 import { all, get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { FX_KINDS } from '../providers/dolar.ts';
 import { HttpError } from '../util.ts';
 
 export type Currency = 'ARS' | 'USD';
+export type OpType = 'COMPRA' | 'VENTA' | 'DIVIDENDO';
 
 export interface AssetRow {
   ticker: string;
   symbol: string;
   name: string;
   type: 'ACCION' | 'CEDEAR';
-  created_at: string;
   last_sync: number | null;
 }
 
 export interface OperationRow {
   id: number;
+  user_id: number;
   ticker: string;
-  type: 'COMPRA' | 'VENTA';
+  type: OpType;
   date: string;
   quantity: number;
   price: number;
@@ -52,14 +53,14 @@ export function parseFxKind(v: unknown): FxKind {
   return FX_KINDS.includes(v as FxKind) ? (v as FxKind) : 'bolsa';
 }
 
-/** Tabla de cotizaciones. Para días sin cotización (feriados) usa la última anterior. */
-export class FxTable {
-  private dates: string[];
-  private rates: number[];
+/** Serie de valores por fecha. Para días sin dato (feriados) usa el último anterior. */
+export class DateSeries {
+  readonly dates: string[];
+  readonly values: number[];
 
-  constructor(rows: { date: string; sell: number }[]) {
+  constructor(rows: { date: string; value: number }[]) {
     this.dates = rows.map((r) => r.date);
-    this.rates = rows.map((r) => r.sell);
+    this.values = rows.map((r) => r.value);
   }
 
   get empty(): boolean {
@@ -67,57 +68,73 @@ export class FxTable {
   }
 
   at(date: string): number {
-    if (this.empty) throw new HttpError(503, 'Todavía no hay cotizaciones del dólar guardadas');
+    if (this.empty) throw new HttpError(503, 'Todavía no hay datos guardados para convertir');
+    if (date < this.dates[0]) return this.values[0];
     let lo = 0;
     let hi = this.dates.length - 1;
-    if (date < this.dates[0]) return this.rates[0];
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
       if (this.dates[mid] <= date) lo = mid;
       else hi = mid - 1;
     }
-    return this.rates[lo];
+    return this.values[lo];
   }
 
   latest(): { date: string; rate: number } | null {
     if (this.empty) return null;
     const i = this.dates.length - 1;
-    return { date: this.dates[i], rate: this.rates[i] };
+    return { date: this.dates[i], rate: this.values[i] };
   }
 }
 
-export function loadFx(kind: FxKind): FxTable {
-  return new FxTable(all<{ date: string; sell: number }>('SELECT date, sell FROM fx_rates WHERE kind = ? ORDER BY date', kind));
+export function loadFx(kind: FxKind): DateSeries {
+  return new DateSeries(all('SELECT date, sell AS value FROM fx_rates WHERE kind = ? ORDER BY date', kind));
 }
 
-type Converter = (ars: number, date: string) => number;
+export type Converter = (ars: number, date: string) => number;
 
-function makeConverter(currency: Currency, fx: FxTable): Converter {
+export function makeConverter(currency: Currency, fx: DateSeries): Converter {
   return currency === 'ARS' ? (ars) => ars : (ars, date) => ars / fx.at(date);
 }
 
+const TYPE_ORDER: Record<OpType, number> = { COMPRA: 0, DIVIDENDO: 1, VENTA: 2 };
+
 export function sortOps(ops: OperationRow[]): OperationRow[] {
-  // Mismo día: primero compras, después ventas, y por orden de carga
-  return [...ops].sort(
-    (a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'COMPRA' ? -1 : 1) || a.id - b.id,
-  );
+  // Mismo día: compras, después dividendos, después ventas; y por orden de carga
+  return [...ops].sort((a, b) => a.date.localeCompare(b.date) || TYPE_ORDER[a.type] - TYPE_ORDER[b.type] || a.id - b.id);
 }
 
 /** Verifica que nunca se venda más de lo que se tenía en ese momento. */
-export function assertNoShortSelling(ops: OperationRow[]): void {
+export function assertNoShortSelling(ops: OperationRow[], ticker = ''): void {
   let qty = 0;
   for (const op of sortOps(ops)) {
     if (op.type === 'COMPRA') qty += op.quantity;
-    else {
+    else if (op.type === 'VENTA') {
       if (op.quantity > qty + 1e-9) {
         throw new HttpError(
           409,
-          `El ${op.date.split('-').reverse().join('/')} se venderían ${op.quantity} unidades, pero en ese momento había ${qty}.`,
+          `${ticker ? ticker + ': e' : 'E'}l ${op.date.split('-').reverse().join('/')} se venderían ${op.quantity} unidades, pero en ese momento había ${qty}.`,
         );
       }
       qty -= op.quantity;
     }
   }
+}
+
+/** Cantidad que se tenía al cierre del día anterior a `date` (para dividendos). */
+export function holdingBefore(ops: OperationRow[], date: string): number {
+  let qty = 0;
+  for (const op of sortOps(ops)) {
+    if (op.date >= date) break;
+    if (op.type === 'COMPRA') qty += op.quantity;
+    else if (op.type === 'VENTA') qty -= op.quantity;
+  }
+  return Math.max(0, qty);
+}
+
+export function opTotal(op: Pick<OperationRow, 'type' | 'quantity' | 'price' | 'fees'>): number {
+  const gross = op.quantity * op.price;
+  return op.type === 'COMPRA' ? gross + op.fees : gross - op.fees;
 }
 
 export interface Position {
@@ -131,17 +148,19 @@ export interface Position {
   unrealized: number;
   unrealizedPct: number;
   realized: number;
+  dividends: number;
   totalGain: number;
   totalGainPct: number;
   dayChange: number;
   dayChangePct: number; // variación del precio del activo en el día
 }
 
-function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: PriceRow | undefined, conv: Converter) {
+export function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: PriceRow | undefined, conv: Converter) {
   let quantity = 0;
   let costBasis = 0;
   let invested = 0;
   let realized = 0;
+  let dividends = 0;
   const realizedByOp = new Map<number, number>();
 
   for (const op of sortOps(ops)) {
@@ -151,7 +170,7 @@ function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: 
       quantity += op.quantity;
       costBasis += op.quantity * px + fees;
       invested += op.quantity * px + fees;
-    } else {
+    } else if (op.type === 'VENTA') {
       const avg = quantity > 0 ? costBasis / quantity : 0;
       const result = op.quantity * px - fees - op.quantity * avg;
       realized += result;
@@ -162,6 +181,10 @@ function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: 
         quantity = 0;
         costBasis = 0;
       }
+    } else {
+      const net = op.quantity * px - fees;
+      dividends += net;
+      realizedByOp.set(op.id, net);
     }
   }
 
@@ -169,7 +192,7 @@ function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: 
   const prevPrice = prev ? conv(prev.close, prev.date) : price;
   const marketValue = quantity * price;
   const unrealized = quantity > 0 ? marketValue - costBasis : 0;
-  const totalGain = realized + unrealized;
+  const totalGain = realized + unrealized + dividends;
 
   const position: Position = {
     quantity,
@@ -182,6 +205,7 @@ function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: 
     unrealized,
     unrealizedPct: costBasis > 0 ? unrealized / costBasis : 0,
     realized,
+    dividends,
     totalGain,
     totalGainPct: invested > 0 ? totalGain / invested : 0,
     dayChange: quantity * (price - prevPrice),
@@ -190,14 +214,29 @@ function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: 
   return { position, realizedByOp };
 }
 
-function getAsset(ticker: string): AssetRow {
-  const asset = get<AssetRow>('SELECT * FROM assets WHERE ticker = ?', ticker);
+export function userAssets(userId: number): AssetRow[] {
+  return all<AssetRow>(
+    `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync FROM user_assets ua
+     JOIN assets a ON a.ticker = ua.ticker WHERE ua.user_id = ? ORDER BY ua.added_at, a.ticker`,
+    userId,
+  );
+}
+
+export function requireUserAsset(userId: number, ticker: string): AssetRow {
+  const asset = get<AssetRow>(
+    `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync FROM user_assets ua
+     JOIN assets a ON a.ticker = ua.ticker WHERE ua.user_id = ? AND ua.ticker = ?`,
+    userId,
+    ticker,
+  );
   if (!asset) throw new HttpError(404, `${ticker} no está en tu cartera`);
   return asset;
 }
 
-export function getOperations(ticker: string): OperationRow[] {
-  return all<OperationRow>('SELECT * FROM operations WHERE ticker = ?', ticker);
+export function getOperations(userId: number, ticker?: string): OperationRow[] {
+  return ticker
+    ? all<OperationRow>('SELECT * FROM operations WHERE user_id = ? AND ticker = ?', userId, ticker)
+    : all<OperationRow>('SELECT * FROM operations WHERE user_id = ?', userId);
 }
 
 function lastTwoPrices(ticker: string): [PriceRow | undefined, PriceRow | undefined] {
@@ -205,34 +244,52 @@ function lastTwoPrices(ticker: string): [PriceRow | undefined, PriceRow | undefi
   return [rows[0], rows[1]];
 }
 
-function positionFor(ticker: string, conv: Converter) {
+function positionFor(userId: number, ticker: string, conv: Converter) {
   const [last, prev] = lastTwoPrices(ticker);
-  return computePosition(getOperations(ticker), last, prev, conv);
+  return computePosition(getOperations(userId, ticker), last, prev, conv);
 }
 
-function convertOp(op: OperationRow, conv: Converter, fx: FxTable, realizedByOp: Map<number, number>) {
-  const gross = op.quantity * op.price;
-  const total = op.type === 'COMPRA' ? gross + op.fees : gross - op.fees;
+export function convertOp(op: OperationRow, conv: Converter, fx: DateSeries, realizedByOp: Map<number, number>) {
   return {
     ...op,
     fxRate: fx.empty ? null : fx.at(op.date),
     priceConv: conv(op.price, op.date),
     feesConv: conv(op.fees, op.date),
-    totalConv: conv(total, op.date),
+    totalConv: conv(opTotal(op), op.date),
     realized: realizedByOp.get(op.id) ?? null,
   };
 }
 
-export function buildPortfolio(currency: Currency, kind: FxKind) {
+/** Retención habitual sobre dividendos: 30% en EE.UU. para CEDEARs, 7% para acciones locales. */
+export const DEFAULT_WITHHOLDING = { CEDEAR: 0.3, ACCION: 0.07 } as const;
+
+/** Dividendos que Yahoo informa para fechas en que tenías el activo y que no registraste. */
+function pendingDividends(userId: number, asset: AssetRow) {
+  const ops = getOperations(userId, asset.ticker);
+  const registered = ops.filter((o) => o.type === 'DIVIDENDO').map((o) => Date.parse(o.date));
+  const events = all<{ date: string; amount: number }>('SELECT date, amount FROM dividend_events WHERE ticker = ? ORDER BY date', asset.ticker);
+  const rate = DEFAULT_WITHHOLDING[asset.type];
+  return events
+    .map((e) => ({ ...e, quantity: holdingBefore(ops, e.date) }))
+    .filter((e) => e.quantity > 0)
+    // Si ya hay un dividendo cargado dentro de los 45 días, lo damos por registrado
+    .filter((e) => !registered.some((r) => Math.abs(r - Date.parse(e.date)) < 45 * 86_400_000))
+    .map((e) => {
+      const gross = e.quantity * e.amount;
+      return { date: e.date, amountPerShare: e.amount, quantity: e.quantity, gross, withholding: gross * rate, withholdingRate: rate };
+    });
+}
+
+export function buildPortfolio(userId: number, currency: Currency, kind: FxKind) {
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx);
-  const assets = all<AssetRow>('SELECT * FROM assets ORDER BY created_at, ticker');
+  const assets = userAssets(userId);
 
   const positions = assets.map((a) => ({
     ticker: a.ticker,
     name: a.name,
     type: a.type,
-    ...positionFor(a.ticker, conv).position,
+    ...positionFor(userId, a.ticker, conv).position,
   }));
 
   const sum = (k: keyof Position) => positions.reduce((acc, p) => acc + (p[k] as number), 0);
@@ -240,9 +297,11 @@ export function buildPortfolio(currency: Currency, kind: FxKind) {
   const costBasis = sum('costBasis');
   const unrealized = sum('unrealized');
   const realized = sum('realized');
+  const dividends = sum('dividends');
   const invested = sum('invested');
   const dayChange = sum('dayChange');
   const yesterdayValue = marketValue - dayChange;
+  const totalGain = realized + unrealized + dividends;
 
   return {
     currency,
@@ -255,8 +314,9 @@ export function buildPortfolio(currency: Currency, kind: FxKind) {
       unrealized,
       unrealizedPct: costBasis > 0 ? unrealized / costBasis : 0,
       realized,
-      totalGain: realized + unrealized,
-      totalGainPct: invested > 0 ? (realized + unrealized) / invested : 0,
+      dividends,
+      totalGain,
+      totalGainPct: invested > 0 ? totalGain / invested : 0,
       dayChange,
       dayChangePct: yesterdayValue > 0 ? dayChange / yesterdayValue : 0,
     },
@@ -265,17 +325,17 @@ export function buildPortfolio(currency: Currency, kind: FxKind) {
   };
 }
 
-export function buildAssetDetail(ticker: string, currency: Currency, kind: FxKind) {
-  const asset = getAsset(ticker);
+export function buildAssetDetail(userId: number, ticker: string, currency: Currency, kind: FxKind) {
+  const asset = requireUserAsset(userId, ticker);
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx);
-  const { position, realizedByOp } = positionFor(ticker, conv);
+  const { position, realizedByOp } = positionFor(userId, ticker, conv);
 
   const series = all<PriceRow>('SELECT date, close, volume FROM prices WHERE ticker = ? ORDER BY date', ticker).map(
     (p) => ({ date: p.date, close: conv(p.close, p.date), volume: p.volume }),
   );
 
-  const operations = sortOps(getOperations(ticker))
+  const operations = sortOps(getOperations(userId, ticker))
     .reverse()
     .map((op) => convertOp(op, conv, fx, realizedByOp));
 
@@ -287,16 +347,17 @@ export function buildAssetDetail(ticker: string, currency: Currency, kind: FxKin
     position,
     operations,
     series,
+    pendingDividends: pendingDividends(userId, asset),
   };
 }
 
-export function buildOperationDetail(id: number, currency: Currency, kind: FxKind) {
-  const op = get<OperationRow>('SELECT * FROM operations WHERE id = ?', id);
+export function buildOperationDetail(userId: number, id: number, currency: Currency, kind: FxKind) {
+  const op = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, userId);
   if (!op) throw new HttpError(404, 'Operación no encontrada');
-  const asset = getAsset(op.ticker);
+  const asset = requireUserAsset(userId, op.ticker);
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx);
-  const { realizedByOp } = positionFor(op.ticker, conv);
+  const { realizedByOp } = positionFor(userId, op.ticker, conv);
   return {
     currency,
     fxKind: kind,

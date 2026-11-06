@@ -12,6 +12,24 @@ export function usePortfolio() {
   });
 }
 
+export function useHistory() {
+  const { currency, fxKind } = useSettings();
+  return useQuery({
+    queryKey: ['history', currency, fxKind],
+    queryFn: () => api.history(currency, fxKind),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useJournal() {
+  const { currency, fxKind } = useSettings();
+  return useQuery({
+    queryKey: ['journal', currency, fxKind],
+    queryFn: () => api.journal(currency, fxKind),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useAsset(ticker: string) {
   const { currency, fxKind } = useSettings();
   return useQuery({
@@ -28,3 +46,10 @@ export function useOperation(id: number) {
     queryFn: () => api.operation(id, currency, fxKind),
   });
 }
+
+export function useAlerts() {
+  return useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 5 * 60_000 });
+}
+
+/** Claves que dependen de las operaciones: se recargan después de cualquier cambio. */
+export const DATA_KEYS = [['portfolio'], ['asset'], ['history'], ['journal'], ['operation'], ['alerts']];

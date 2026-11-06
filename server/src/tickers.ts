@@ -1,12 +1,7 @@
-// Acciones argentinas que cotizan en BYMA. Todo lo que no esté acá lo tratamos como CEDEAR.
-const ARGENTINE_STOCKS = new Set([
-  'AGRO', 'ALUA', 'AUSO', 'BBAR', 'BHIP', 'BMA', 'BOLT', 'BPAT', 'BYMA', 'CADO', 'CAPX', 'CARC',
-  'CECO2', 'CELU', 'CEPU', 'CGPA2', 'COME', 'CRES', 'CTIO', 'CVH', 'DGCU2', 'DOME', 'EDN', 'FERR',
-  'FIPL', 'GAMI', 'GARO', 'GBAN', 'GCDI', 'GCLA', 'GGAL', 'GRIM', 'HARG', 'HAVA', 'INTR', 'INVJ',
-  'IRCP', 'IRSA', 'LEDE', 'LOMA', 'LONG', 'METR', 'MIRG', 'MOLA', 'MOLI', 'MORI', 'OEST', 'PAMP',
-  'PATA', 'POLL', 'RICH', 'RIGO', 'ROSE', 'SAMI', 'SEMI', 'SUPV', 'TECO2', 'TGNO4', 'TGSU2',
-  'TRAN', 'TXAR', 'VALO', 'YPFD',
-]);
+import { CATALOG } from './catalog.ts';
+
+// Acciones argentinas conocidas. Todo lo que no esté en esta lista se trata como CEDEAR.
+const ARGENTINE_STOCKS = new Set(CATALOG.filter((c) => c.type === 'ACCION').map((c) => c.ticker));
 
 // Nombres con los que la gente suele buscar y que en BYMA tienen otro ticker
 const ALIASES: Record<string, string> = {
@@ -15,8 +10,10 @@ const ALIASES: Record<string, string> = {
   TEO: 'TECO2',
   TECO: 'TECO2',
   PAM: 'PAMP',
-  CEPUA: 'CEPU',
   GALICIA: 'GGAL',
+  GOOG: 'GOOGL',
+  DIS: 'DISN',
+  'BRK.B': 'BRKB',
 };
 
 export function normalizeTicker(input: string): string {
