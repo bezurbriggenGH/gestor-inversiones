@@ -7,6 +7,7 @@ import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } fro
 import { fetchDepositRate, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
 import { addDays } from '../util.ts';
+import { usSymbolOf } from '../cedears.ts';
 
 const PRICE_TTL_MS = 15 * 60_000; // precios: como mucho cada 15 minutos
 const FX_TTL_MS = 60 * 60_000; // dólar: como mucho cada hora
@@ -82,7 +83,23 @@ export function syncAsset(ticker: string, force = false): Promise<void> {
     saveBars(ticker, chart.bars, chart.dividends);
     run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
     checkAlerts(ticker);
+    await syncUnderlying(ticker);
   });
+}
+
+/** Para CEDEARs: precio de la acción original en EE.UU. (para el CCL implícito). */
+async function syncUnderlying(ticker: string): Promise<void> {
+  const symbol = usSymbolOf(ticker);
+  if (!symbol) return;
+  const series = `us:${symbol}`;
+  try {
+    const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM index_values WHERE series = ?', series)?.d;
+    const chart = await fetchChart(symbol, last ? { from: addDays(last, -7) } : { range: '2y' });
+    saveIndex(series, chart.bars.map((b) => ({ date: b.date, value: b.close })));
+  } catch (e) {
+    // Es un dato extra: si falla, el resto del activo sigue funcionando
+    console.warn(`[sync] ${symbol} en EE.UU.:`, (e as Error).message);
+  }
 }
 
 export function syncFx(force = false): Promise<void> {
@@ -134,4 +151,5 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
   if (chart.bars.length === 0) throw new Error(`${ticker} no tiene precios`);
   run('INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES (?, ?, ?, ?, ?)', ticker, symbol, chart.name, type, Date.now());
   saveBars(ticker, chart.bars, chart.dividends);
+  if (type === 'CEDEAR') await syncUnderlying(ticker);
 }

@@ -12,6 +12,7 @@ import { all, get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { FX_KINDS } from '../providers/dolar.ts';
 import { HttpError } from '../util.ts';
+import { buildCedearInfo, cedearGap } from './cedear.ts';
 
 export type Currency = 'ARS' | 'USD';
 export type OpType = 'COMPRA' | 'VENTA' | 'DIVIDENDO';
@@ -41,6 +42,9 @@ export interface OperationRow {
 
 interface PriceRow {
   date: string;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
   close: number;
   volume: number | null;
 }
@@ -290,6 +294,7 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
     name: a.name,
     type: a.type,
     ...positionFor(userId, a.ticker, conv).position,
+    cedearGap: a.type === 'CEDEAR' ? cedearGap(a.ticker) : null,
   }));
 
   const sum = (k: keyof Position) => positions.reduce((acc, p) => acc + (p[k] as number), 0);
@@ -331,8 +336,20 @@ export function buildAssetDetail(userId: number, ticker: string, currency: Curre
   const conv = makeConverter(currency, fx);
   const { position, realizedByOp } = positionFor(userId, ticker, conv);
 
-  const series = all<PriceRow>('SELECT date, close, volume FROM prices WHERE ticker = ? ORDER BY date', ticker).map(
-    (p) => ({ date: p.date, close: conv(p.close, p.date), volume: p.volume }),
+  const series = all<PriceRow>('SELECT date, open, high, low, close, volume FROM prices WHERE ticker = ? ORDER BY date', ticker).map(
+    (p) => {
+      // Si Yahoo no trae apertura/máximo/mínimo, la vela se dibuja plana en el cierre
+      const c = conv(p.close, p.date);
+      const o = p.open ? conv(p.open, p.date) : c;
+      return {
+        date: p.date,
+        open: o,
+        high: Math.max(p.high ? conv(p.high, p.date) : c, o, c),
+        low: Math.min(p.low ? conv(p.low, p.date) : c, o, c),
+        close: c,
+        volume: p.volume,
+      };
+    },
   );
 
   const operations = sortOps(getOperations(userId, ticker))
@@ -348,6 +365,7 @@ export function buildAssetDetail(userId: number, ticker: string, currency: Curre
     operations,
     series,
     pendingDividends: pendingDividends(userId, asset),
+    cedear: asset.type === 'CEDEAR' ? buildCedearInfo(ticker) : null,
   };
 }
 

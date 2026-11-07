@@ -7,6 +7,10 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 
 - **Cartera**: valor actual, ganancia realizada y no realizada, dividendos y variación diaria.
 - **Evolución**: gráfico del valor de la cartera contra la plata puesta, y TIR anual.
+- **Rendimiento mes a mes**: calendario con el rendimiento de cada mes y de cada año.
+- **Gráfico de cada activo**: línea o velas, medias móviles de 50 y 200 días, tus compras y ventas, y la línea de tu precio promedio.
+- **CCL implícito de los CEDEARs**: a qué dólar estás comprando y si el CEDEAR está caro o barato contra el CCL.
+- **Mapa de la cartera**: cada activo es un rectángulo del tamaño de tu tenencia, en verde o rojo según cómo le fue.
 - **¿Le ganaste a…?**: compara tu cartera contra inflación, dólar MEP, plazo fijo, Merval y S&P 500,
   simulando que la misma plata entró y salió en las mismas fechas.
 - **Rendimiento real**: cuánto ganaste descontando la inflación.
@@ -67,6 +71,7 @@ npm start
 |---|---|
 | Precios diarios y dividendos de BYMA (`GGAL.BA`, `MELI.BA`…) | Yahoo Finance |
 | Merval (`^MERV`) y S&P 500 (CEDEAR `SPY.BA`) | Yahoo Finance |
+| Precio en EE.UU. de las acciones de cada CEDEAR (`AAPL`, `MELI`…) | Yahoo Finance |
 | Dólar MEP y CCL (historial) | ArgentinaDatos |
 | Dólar del momento | DolarApi |
 | Inflación (índice UVA) y tasa de plazo fijo | ArgentinaDatos |
@@ -86,6 +91,8 @@ server/src/
     journal.ts     → diario de decisiones
     importer.ts    → lectura de CSV
     alerts.ts      → alertas de precio
+    cedear.ts      → CCL implícito y brecha de los CEDEARs
+  cedears.ts     → tabla de ratios de los CEDEARs
   auth.ts        → registro, login y sesiones
   db.ts          → base de datos y migraciones
   routes.ts      → endpoints de la API REST
@@ -105,3 +112,5 @@ client/src/
 - **TIR**: tasa anual que iguala a cero el valor presente de todos los flujos (incluido el valor actual).
 - **Plazo fijo**: tasa de depósitos a 30 días, renovado cada mes (capitalización mensual).
 - **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%.
+- **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias.
+- **CCL implícito**: precio del CEDEAR × ratio ÷ precio en EE.UU. Si el ratio observado se aleja más de 10% del de la tabla (por ejemplo, tras un split), no se muestra.

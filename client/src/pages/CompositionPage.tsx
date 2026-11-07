@@ -3,6 +3,7 @@ import { usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
 import { money, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
+import { PortfolioTreemap } from '../components/PortfolioTreemap';
 
 const COLORS = ['#8b5cf6', '#22d3ee', '#22c55e', '#f59e0b', '#ec4899', '#3b82f6', '#a3e635', '#f97316', '#14b8a6', '#e879f9'];
 const CONCENTRATION_LIMIT = 0.35;
@@ -27,6 +28,8 @@ export function CompositionPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold">Composición</h1>
+
+      <PortfolioTreemap positions={rows} />
 
       <section className="grid gap-6 rounded-xl bg-panel p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <div className="relative h-72">

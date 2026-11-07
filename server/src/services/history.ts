@@ -86,7 +86,7 @@ export function xirr(flows: { date: string; amount: number }[]): number | null {
 export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   const ops = sortOps(getOperations(userId));
   const fx = loadFx(kind);
-  const empty = { currency, points: [], benchmarks: [], portfolio: null, realReturn: null };
+  const empty = { currency, points: [], benchmarks: [], portfolio: null, realReturn: null, monthly: [] };
   if (ops.length === 0) return empty;
 
   const start = ops[0].date;
@@ -204,5 +204,38 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     benchmarks,
     portfolio: { value: last.value, netInvested: last.netInvested, gain: last.value - last.netInvested, irr: irrWithFinal(last.value) },
     realReturn,
+    monthly: monthlyReturns(points),
   };
+}
+
+/**
+ * Rendimiento de cada mes, sin que las compras y ventas lo distorsionen
+ * (rendimiento ponderado por tiempo): se encadena el rendimiento de cada día,
+ * descontando la plata que entró o salió ese día.
+ */
+export function monthlyReturns(points: { date: string; value: number; netInvested: number }[]) {
+  const months: { month: string; return: number; gain: number }[] = [];
+  let factor = 1;
+  let gain = 0;
+  let current = '';
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const prev = points[i - 1];
+    const month = p.date.slice(0, 7);
+    if (month !== current) {
+      if (current) months.push({ month: current, return: factor - 1, gain });
+      current = month;
+      factor = 1;
+      gain = 0;
+    }
+    const prevValue = prev?.value ?? 0;
+    const flow = p.netInvested - (prev?.netInvested ?? 0);
+    let r = 0;
+    if (prevValue > 1e-6) r = (p.value - flow) / prevValue - 1;
+    else if (flow > 1e-6) r = p.value / flow - 1; // primer día: del precio de compra al cierre
+    factor *= 1 + r;
+    gain += p.value - prevValue - flow;
+  }
+  if (current) months.push({ month: current, return: factor - 1, gain });
+  return months;
 }

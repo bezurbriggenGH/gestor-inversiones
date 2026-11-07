@@ -5,6 +5,7 @@ import { useAsset } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, num, pct, tone } from '../format';
 import { PriceChart } from '../components/PriceChart';
+import { CedearPanel } from '../components/CedearPanel';
 import { OperationForm, type OperationPrefill } from '../components/OperationForm';
 import { AlertForm } from '../components/AlertForm';
 import { Button, ErrorBox, Loading } from '../components/ui';
@@ -85,7 +86,7 @@ export function AssetPage() {
         </Button>
       </div>
 
-      <PriceChart series={data.series} operations={tradeOps} currency={currency} />
+      <PriceChart series={data.series} operations={tradeOps} currency={currency} avgCost={p.quantity > 0 ? p.avgCost : 0} />
 
       <PendingDividends
         items={data.pendingDividends}
@@ -125,6 +126,8 @@ export function AssetPage() {
           <StatBox label="Total invertido" value={money(p.invested, currency)} sub="suma de todas las compras" />
         </div>
       </section>
+
+      {data.cedear && <CedearPanel ticker={asset.ticker} info={data.cedear} />}
 
       <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
         <h2 className="mb-1 rounded-md bg-card py-1.5 text-center text-sm">Historial</h2>

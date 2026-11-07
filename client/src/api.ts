@@ -32,6 +32,7 @@ export interface PortfolioPosition extends Position {
   name: string;
   type: AssetType;
   weight: number;
+  cedearGap: number | null;
 }
 
 export interface FxLatest {
@@ -83,6 +84,9 @@ export interface Operation {
 
 export interface PricePoint {
   date: string;
+  open: number;
+  high: number;
+  low: number;
   close: number;
   volume: number | null;
 }
@@ -105,7 +109,25 @@ export interface AssetDetail {
   operations: Operation[];
   series: PricePoint[];
   pendingDividends: PendingDividend[];
+  cedear: CedearInfo | null;
 }
+
+export type CedearInfo =
+  | { status: 'SIN_DATOS'; ratio: number; usSymbol: string }
+  | {
+      status: 'OK' | 'RATIO_DUDOSO';
+      ratio: number;
+      usSymbol: string;
+      observedRatio: number;
+      date: string;
+      arsPrice: number;
+      usPrice: number;
+      ccl: number;
+      impliedCcl: number;
+      gap: number;
+      gapAvg: number;
+      history: { date: string; impliedCcl: number; ccl: number; gap: number }[];
+    };
 
 export interface OperationDetail {
   currency: Currency;
@@ -143,6 +165,7 @@ export interface History {
   }[];
   portfolio: { value: number; netInvested: number; gain: number; irr: number | null } | null;
   realReturn: { gain: number; pct: number } | null;
+  monthly: { month: string; return: number; gain: number }[];
 }
 
 export type Verdict = 'ACIERTO' | 'ERROR' | 'NEUTRAL';

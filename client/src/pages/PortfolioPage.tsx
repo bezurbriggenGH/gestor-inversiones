@@ -8,6 +8,7 @@ import { FX_LABEL, date, money, pct, tone } from '../format';
 import { Button, ErrorBox, Loading, Triangle } from '../components/ui';
 import { AddAssetDialog } from '../components/AddAssetDialog';
 import { LineChart, type ChartLine } from '../components/LineChart';
+import { MonthlyReturns } from '../components/MonthlyReturns';
 
 function Stat({ label, value, sub, valueClass = '', hint }: { label: string; value: string; sub?: string; valueClass?: string; hint?: string }) {
   return (
@@ -105,6 +106,11 @@ function AssetCard({ p, deleting, onDelete }: { p: PortfolioPosition; deleting: 
             <span className={tone(p.dayChangePct)}>{pct(p.dayChangePct)}</span>
             <Triangle value={p.dayChangePct} />
           </div>
+          {p.cedearGap != null && (
+            <p className="tabular mt-0.5 text-[11px] text-muted" title="Diferencia entre el dólar implícito del CEDEAR y el CCL">
+              brecha CCL <span className={tone(-p.cedearGap)}>{pct(p.cedearGap)}</span>
+            </p>
+          )}
         </div>
         <div className="tabular flex items-center justify-between text-sm">
           <span className="text-muted">{hasPosition ? money(p.marketValue, currency) : 'Sin tenencia'}</span>
@@ -190,6 +196,7 @@ export function PortfolioPage() {
       </div>
 
       {history.data && <Evolution history={history.data} />}
+      {history.data && history.data.monthly.length > 0 && <MonthlyReturns months={history.data.monthly} />}
 
       {adding && <AddAssetDialog onClose={() => setAdding(false)} />}
     </div>
