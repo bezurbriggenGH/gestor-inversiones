@@ -6,10 +6,10 @@ import { fetchChart, type Bar, type Dividend, type Split } from '../providers/ya
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
 import { fetchDepositRate, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
-import { addDays } from '../util.ts';
+import { addDays, lastMarketTime } from '../util.ts';
 import { usSymbolOf } from '../cedears.ts';
 
-const PRICE_TTL_MS = 15 * 60_000; // precios: como mucho cada 15 minutos
+const PRICE_TTL_MS = 15 * 60_000; // precios: con el mercado abierto, como mucho cada 15 minutos
 const FX_TTL_MS = 60 * 60_000; // dólar: como mucho cada hora
 const INDEX_TTL_MS = 6 * 60 * 60_000; // índices de referencia: cada 6 horas
 
@@ -26,6 +26,19 @@ function once(key: string, fn: () => Promise<void>): Promise<void> {
 function stale(key: string, ttl: number): boolean {
   const last = get<{ value: number }>('SELECT value FROM sync_state WHERE key = ?', key)?.value;
   return !last || Date.now() - last > ttl;
+}
+
+/**
+ * ¿Pudo cambiar el precio desde la última consulta?
+ * - Mercado abierto: sí, si pasaron más de 15 minutos.
+ * - Mercado cerrado: solo si la última consulta fue antes del cierre (falta el precio final).
+ *   Así, de noche y los fines de semana no se le pide nada a Yahoo.
+ */
+export function pricesStale(lastSync: number | null | undefined, now: number = Date.now()): boolean {
+  if (!lastSync) return true;
+  const marketTime = lastMarketTime(now);
+  if (marketTime < now) return lastSync < marketTime;
+  return now - lastSync > PRICE_TTL_MS;
 }
 
 function markSynced(key: string) {
@@ -79,7 +92,7 @@ export function syncAsset(ticker: string, force = false): Promise<void> {
       ticker,
     );
     if (!asset) return;
-    if (!force && asset.last_sync && Date.now() - asset.last_sync < PRICE_TTL_MS) return;
+    if (!force && !pricesStale(asset.last_sync)) return;
 
     const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM prices WHERE ticker = ?', ticker)?.d;
     // Los activos guardados antes de registrar splits se descargan completos una vez

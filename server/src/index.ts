@@ -40,12 +40,12 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const PORT = Number(process.env.PORT ?? 3001);
 app.listen(PORT, () => {
   console.log(`API lista en http://localhost:${PORT}`);
-  // Actualiza al arrancar y cada 30 minutos mientras el servidor esté prendido.
+  // Actualiza al arrancar y cada 1 hora mientras el servidor esté prendido.
   // Si estuvo apagado, la primera actualización completa los días que falten.
   const tick = () => {
     run('DELETE FROM sessions WHERE expires_at < ?', Date.now());
     syncAll();
   };
   tick();
-  setInterval(tick, 30 * 60_000);
+  setInterval(tick, 60 * 60_000);
 });
