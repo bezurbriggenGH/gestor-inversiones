@@ -13,10 +13,10 @@ const MODES: { key: Mode; label: string; scale: number }[] = [
 
 function color(r: number, scale: number) {
   const t = Math.min(1, Math.abs(r) / scale);
-  if (Math.abs(r) < 0.0005) return '#2a2a2a';
+  if (Math.abs(r) < 0.0005) return '#2a2b2e';
   // De gris oscuro a verde o rojo intenso
-  const [r0, g0, b0] = [42, 42, 42];
-  const [r1, g1, b1] = r > 0 ? [22, 163, 74] : [220, 38, 38];
+  const [r0, g0, b0] = [35, 36, 39];
+  const [r1, g1, b1] = r > 0 ? [63, 130, 86] : [170, 70, 66];
   const mix = (a: number, b: number) => Math.round(a + (b - a) * (0.25 + 0.75 * t));
   return `rgb(${mix(r0, r1)},${mix(g0, g1)},${mix(b0, b1)})`;
 }
@@ -41,7 +41,7 @@ function Node({ x, y, width, height, depth, name, change, weight, scale, onOpen 
   const small = width > 38 && height > 22;
   return (
     <g onClick={() => onOpen(name)} style={{ cursor: 'pointer' }}>
-      <rect x={x} y={y} width={width} height={height} rx={6} fill={color(change, scale)} stroke="#0d0d0d" strokeWidth={3} />
+      <rect x={x} y={y} width={width} height={height} rx={6} fill={color(change, scale)} stroke="#111213" strokeWidth={3} />
       {small && (
         <text x={x + width / 2} y={y + height / 2 + (big ? -6 : 4)} textAnchor="middle" fill="#fff" fontSize={big ? 15 : 11} fontWeight={600}>
           {name}

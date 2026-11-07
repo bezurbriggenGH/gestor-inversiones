@@ -87,7 +87,7 @@ export function AlertsPage() {
               <div
                 key={a.id}
                 className={`tabular flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg px-4 py-3 text-sm ${
-                  a.triggered_at && !a.seen ? 'bg-yellow-500/10 ring-1 ring-yellow-500/40' : 'bg-panel'
+                  a.triggered_at && !a.seen ? 'bg-[#b8964f]/10 ring-1 ring-[#b8964f]/40' : 'bg-panel'
                 }`}
               >
                 <Link to={`/activo/${a.ticker}`} className="w-16 font-semibold hover:underline">

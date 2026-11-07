@@ -5,7 +5,7 @@ import { money, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
 import { PortfolioTreemap } from '../components/PortfolioTreemap';
 
-const COLORS = ['#8b5cf6', '#22d3ee', '#22c55e', '#f59e0b', '#ec4899', '#3b82f6', '#a3e635', '#f97316', '#14b8a6', '#e879f9'];
+const COLORS = ['#7c6bb0', '#5a9bb0', '#4f9d69', '#c49a4a', '#b0607f', '#5b7fb8', '#8fae5a', '#c07a4a', '#4a9e93', '#a77bb0'];
 const CONCENTRATION_LIMIT = 0.35;
 
 export function CompositionPage() {
@@ -42,8 +42,8 @@ export function CompositionPage() {
               </Pie>
               <Tooltip
                 formatter={(v) => money(Number(v), currency)}
-                contentStyle={{ background: '#1a1a1a', border: '1px solid #3a3a3a', borderRadius: 8 }}
-                itemStyle={{ color: '#f2f2f2' }}
+                contentStyle={{ background: '#1c1d1f', border: '1px solid #2a2b2e', borderRadius: 8 }}
+                itemStyle={{ color: '#e4e4e4' }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -87,7 +87,7 @@ export function CompositionPage() {
       </section>
 
       {concentrated.length > 0 && (
-        <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+        <p className="rounded-lg border border-[#b8964f]/30 bg-[#b8964f]/10 px-4 py-3 text-sm text-[#c9ab6a]">
           Concentración alta: {concentrated.map((c) => `${c.ticker} (${pct(c.weight).replace('+', '')})`).join(', ')} supera el{' '}
           {CONCENTRATION_LIMIT * 100}% de la cartera. Si a esa empresa le va mal, afecta mucho al total.
         </p>

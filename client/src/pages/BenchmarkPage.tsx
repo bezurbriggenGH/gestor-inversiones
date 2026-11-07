@@ -7,11 +7,11 @@ import { ErrorBox, Loading } from '../components/ui';
 import { LineChart, type ChartLine } from '../components/LineChart';
 
 const COLORS: Record<BenchmarkKey, string> = {
-  inflacion: '#f59e0b',
-  dolar: '#22c55e',
-  plazofijo: '#22d3ee',
-  merval: '#ec4899',
-  spy: '#3b82f6',
+  inflacion: '#c49a4a',
+  dolar: '#4f9d69',
+  plazofijo: '#5a9bb0',
+  merval: '#b0607f',
+  spy: '#5b7fb8',
 };
 
 export function BenchmarkPage() {
@@ -22,7 +22,7 @@ export function BenchmarkPage() {
   const lines = useMemo<ChartLine[]>(() => {
     if (!data) return [];
     const out: ChartLine[] = [
-      { key: 'cartera', label: 'Tu cartera', color: '#8b5cf6', area: true, data: data.points.map((p) => ({ date: p.date, value: p.value })) },
+      { key: 'cartera', label: 'Tu cartera', color: '#7c6bb0', area: true, data: data.points.map((p) => ({ date: p.date, value: p.value })) },
     ];
     for (const b of data.benchmarks) {
       if (!b.available || hidden.has(b.key)) continue;
@@ -84,7 +84,7 @@ export function BenchmarkPage() {
               <button
                 key={b.key}
                 onClick={() => toggle(b.key)}
-                className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition ${
+                className={`flex items-center gap-2 rounded-sm border px-3 py-1 text-xs transition ${
                   hidden.has(b.key) ? 'border-line text-muted' : 'border-transparent bg-card text-text'
                 }`}
               >

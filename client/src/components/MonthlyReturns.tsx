@@ -7,7 +7,7 @@ const FULL_SCALE = 0.15; // a partir de ±15% el color llega a su máxima intens
 
 function cellStyle(r: number) {
   const alpha = 0.12 + 0.68 * Math.min(1, Math.abs(r) / FULL_SCALE);
-  return { background: r >= 0 ? `rgba(34,197,94,${alpha})` : `rgba(239,68,68,${alpha})` };
+  return { background: r >= 0 ? `rgba(79,157,105,${alpha})` : `rgba(194,84,80,${alpha})` };
 }
 
 const short = (r: number) => `${r > 0 ? '+' : ''}${(r * 100).toFixed(1).replace('.', ',')}%`;

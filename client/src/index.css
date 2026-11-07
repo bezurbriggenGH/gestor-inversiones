@@ -1,19 +1,28 @@
 @import "tailwindcss";
 
+/* Paleta mate: grises oscuros casi sin brillo y colores apagados */
 @theme {
-  --color-bg: #000000;
-  --color-panel: #0d0d0d;
-  --color-sidebar: #262626;
-  --color-card: #2b2b2b;
-  --color-card-hover: #343434;
-  --color-line: #3a3a3a;
-  --color-text: #f2f2f2;
-  --color-muted: #a3a3a3;
-  --color-up: #22c55e;
-  --color-down: #ef4444;
-  --color-accent: #8b5cf6;
-  --color-link: #22d3ee;
+  --color-bg: #08090a;
+  --color-panel: #111213;
+  --color-sidebar: #141516;
+  --color-card: #1b1c1e;
+  --color-card-hover: #232427;
+  --color-line: #2a2b2e;
+  --color-text: #e4e4e4;
+  --color-muted: #8a8a8f;
+  --color-up: #4f9d69;
+  --color-down: #c25450;
+  --color-accent: #7c6bb0;
+  --color-link: #5a9bb0;
   --font-sans: "Inter", system-ui, sans-serif;
+
+  /* Bordes apenas redondeados */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 5px;
 }
 
 body {

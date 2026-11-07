@@ -56,8 +56,8 @@ function Evolution({ history }: { history: History }) {
   const { currency } = useSettings();
   const lines = useMemo<ChartLine[]>(
     () => [
-      { key: 'value', label: 'Valor de la cartera', color: '#8b5cf6', area: true, data: history.points.map((p) => ({ date: p.date, value: p.value })) },
-      { key: 'invested', label: 'Plata puesta (neta)', color: '#a3a3a3', dashed: true, data: history.points.map((p) => ({ date: p.date, value: p.netInvested })) },
+      { key: 'value', label: 'Valor de la cartera', color: '#7c6bb0', area: true, data: history.points.map((p) => ({ date: p.date, value: p.value })) },
+      { key: 'invested', label: 'Plata puesta (neta)', color: '#8a8a8f', dashed: true, data: history.points.map((p) => ({ date: p.date, value: p.netInvested })) },
     ],
     [history],
   );
@@ -159,7 +159,7 @@ export function PortfolioPage() {
       <Summary data={data} />
 
       {data.errors.length > 0 && (
-        <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+        <p className="rounded-lg border border-[#b8964f]/30 bg-[#b8964f]/10 px-3 py-2 text-xs text-[#c9ab6a]">
           Alguna fuente de datos no respondió; se muestran los últimos precios guardados.
         </p>
       )}

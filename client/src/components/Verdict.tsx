@@ -11,7 +11,7 @@ const TEXT: Record<Verdict, string> = { ACIERTO: 'Acierto', ERROR: 'Error', NEUT
 export function VerdictBadge({ verdict, days }: { verdict: Verdict | null; days?: number | null }) {
   if (!verdict) return <span className="rounded-full bg-card px-2.5 py-0.5 text-xs text-muted">Esperando</span>;
   return (
-    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STYLE[verdict]}`}>
+    <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${STYLE[verdict]}`}>
       {TEXT[verdict]}
       {days ? ` · ${days}d` : ''}
     </span>

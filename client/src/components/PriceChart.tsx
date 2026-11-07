@@ -27,14 +27,14 @@ const RANGES = [
 type RangeLabel = (typeof RANGES)[number]['label'];
 
 const MAS = [
-  { key: 'ma50', days: 50, color: '#f59e0b', label: 'Media 50 días' },
-  { key: 'ma200', days: 200, color: '#22d3ee', label: 'Media 200 días' },
+  { key: 'ma50', days: 50, color: '#c49a4a', label: 'Media 50 días' },
+  { key: 'ma200', days: 200, color: '#5a9bb0', label: 'Media 200 días' },
 ] as const;
 type MaKey = (typeof MAS)[number]['key'];
 
-const UP = '#22c55e';
-const DOWN = '#ef4444';
-const ACCENT = '#8b5cf6';
+const UP = '#4f9d69';
+const DOWN = '#c25450';
+const ACCENT = '#7c6bb0';
 
 function timeToIso(t: Time): string {
   if (typeof t === 'string') return t;
@@ -87,7 +87,7 @@ function Toggle({ on, onClick, children, color }: { on: boolean; onClick: () => 
       onClick={onClick}
       className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition ${on ? 'bg-card text-text' : 'text-muted hover:text-text'}`}
     >
-      {color && <span className="h-0.5 w-3 rounded" style={{ background: on ? color : '#525252' }} />}
+      {color && <span className="h-0.5 w-3 rounded" style={{ background: on ? color : '#45464a' }} />}
       {children}
     </button>
   );
@@ -124,13 +124,13 @@ export function PriceChart({
     const chart = createChart(container.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: '#0d0d0d' },
-        textColor: '#a3a3a3',
+        background: { type: ColorType.Solid, color: '#111213' },
+        textColor: '#8a8a8f',
         fontFamily: 'Inter, system-ui, sans-serif',
       },
-      grid: { vertLines: { color: '#1a1a1a' }, horzLines: { color: '#1a1a1a' } },
-      rightPriceScale: { borderColor: '#2a2a2a' },
-      timeScale: { borderColor: '#2a2a2a' },
+      grid: { vertLines: { color: '#1c1d1f' }, horzLines: { color: '#1c1d1f' } },
+      rightPriceScale: { borderColor: '#2a2b2e' },
+      timeScale: { borderColor: '#2a2b2e' },
       crosshair: { mode: candles ? CrosshairMode.Normal : CrosshairMode.Magnet },
       localization: { locale: 'es-AR', priceFormatter: (p: number) => priceFmt.format(p) },
     });
@@ -167,7 +167,7 @@ export function PriceChart({
     if (showAvg && avgCost > 0) {
       main.createPriceLine({
         price: avgCost,
-        color: '#e5e5e5',
+        color: '#c8c8cc',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
@@ -186,7 +186,7 @@ export function PriceChart({
       series.map((p, i) => ({
         time: p.date as Time,
         value: p.volume ?? 0,
-        color: i > 0 && p.close < series[i - 1].close ? 'rgba(239,68,68,0.45)' : 'rgba(34,197,94,0.45)',
+        color: i > 0 && p.close < series[i - 1].close ? 'rgba(194,84,80,0.45)' : 'rgba(79,157,105,0.45)',
       })),
     );
 
@@ -291,7 +291,7 @@ export function PriceChart({
             </Toggle>
           ))}
           {avgCost > 0 && (
-            <Toggle on={showAvg} color="#e5e5e5" onClick={() => setShowAvg((v) => !v)}>
+            <Toggle on={showAvg} color="#c8c8cc" onClick={() => setShowAvg((v) => !v)}>
               Tu precio promedio
             </Toggle>
           )}

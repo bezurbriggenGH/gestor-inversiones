@@ -27,8 +27,8 @@ export function CedearPanel({ ticker, info }: { ticker: string; info: CedearInfo
     () =>
       info.status === 'OK'
         ? [
-            { key: 'implied', label: `CCL implícito de ${ticker}`, color: '#8b5cf6', data: info.history.map((p) => ({ date: p.date, value: p.impliedCcl })) },
-            { key: 'ccl', label: 'CCL del mercado', color: '#a3a3a3', dashed: true, data: info.history.map((p) => ({ date: p.date, value: p.ccl })) },
+            { key: 'implied', label: `CCL implícito de ${ticker}`, color: '#7c6bb0', data: info.history.map((p) => ({ date: p.date, value: p.impliedCcl })) },
+            { key: 'ccl', label: 'CCL del mercado', color: '#8a8a8f', dashed: true, data: info.history.map((p) => ({ date: p.date, value: p.ccl })) },
           ]
         : [],
     [info, ticker],
@@ -43,7 +43,7 @@ export function CedearPanel({ ticker, info }: { ticker: string; info: CedearInfo
   }
   if (info.status === 'RATIO_DUDOSO') {
     return (
-      <section className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-5 text-sm text-yellow-300">
+      <section className="rounded-xl border border-[#b8964f]/30 bg-[#b8964f]/10 p-5 text-sm text-[#c9ab6a]">
         El ratio de {ticker} parece haber cambiado (los precios indican ~{info.observedRatio.toFixed(1)}, la tabla dice {info.ratio}). Puede
         haber habido un split. No mostramos el dólar implícito hasta confirmar el ratio nuevo.
       </section>
@@ -55,7 +55,7 @@ export function CedearPanel({ ticker, info }: { ticker: string; info: CedearInfo
     <section className="flex flex-col gap-4 rounded-xl bg-panel p-5">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-medium">¿Está caro o barato el CEDEAR?</h2>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${v.cls}`}>{v.label}</span>
+        <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${v.cls}`}>{v.label}</span>
       </div>
       <p className="text-sm text-muted">
         Comprando {ticker} hoy, {v.text}: el dólar implícito es {money(info.impliedCcl, 'ARS')} contra un CCL de {money(info.ccl, 'ARS')}{' '}

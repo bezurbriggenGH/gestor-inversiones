@@ -39,10 +39,10 @@ export function LineChart({ lines, currency, height = 'h-80' }: { lines: ChartLi
     const fmt = new Intl.NumberFormat('es-AR', { notation: 'compact', maximumFractionDigits: 1 });
     const chart = createChart(container.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: '#0d0d0d' }, textColor: '#a3a3a3', fontFamily: 'Inter, system-ui, sans-serif' },
-      grid: { vertLines: { color: '#1a1a1a' }, horzLines: { color: '#1a1a1a' } },
-      rightPriceScale: { borderColor: '#2a2a2a' },
-      timeScale: { borderColor: '#2a2a2a' },
+      layout: { background: { type: ColorType.Solid, color: '#111213' }, textColor: '#8a8a8f', fontFamily: 'Inter, system-ui, sans-serif' },
+      grid: { vertLines: { color: '#1c1d1f' }, horzLines: { color: '#1c1d1f' } },
+      rightPriceScale: { borderColor: '#2a2b2e' },
+      timeScale: { borderColor: '#2a2b2e' },
       crosshair: { mode: CrosshairMode.Normal },
       localization: { locale: 'es-AR', priceFormatter: (p: number) => fmt.format(p) },
     });
