@@ -49,8 +49,8 @@ export function Sidebar() {
   const links = [
     { to: '/', label: 'Mis inversiones', end: true },
     { to: '/composicion', label: 'Composición' },
-    { to: '/benchmark', label: '¿Le ganaste a…?' },
-    { to: '/simulador', label: '¿Y si hubiera invertido…?' },
+    { to: '/benchmark', label: 'Comparativa' },
+    { to: '/simulador', label: 'Simulador' },
     { to: '/diario', label: 'Diario de decisiones' },
     { to: '/alertas', label: 'Alertas', badge: unseen },
     { to: '/importar', label: 'Importar operaciones' },

@@ -42,7 +42,7 @@ export function BenchmarkPage() {
   if (!data.portfolio || data.points.length < 2) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">¿Le ganaste a…?</h1>
+        <h1 className="text-xl font-semibold">Comparativa</h1>
         <p className="text-muted">Registrá al menos una compra para comparar tu cartera contra la inflación, el dólar y el plazo fijo.</p>
       </div>
     );
@@ -62,7 +62,7 @@ export function BenchmarkPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">¿Le ganaste a…?</h1>
+        <h1 className="text-xl font-semibold">Comparativa</h1>
         <p className="mt-1 text-sm text-muted">
           Simulamos que la misma plata, en las mismas fechas en que compraste y vendiste, se hubiera ido a cada alternativa.
         </p>

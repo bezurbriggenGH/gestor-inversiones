@@ -140,7 +140,7 @@ function Result({ sim }: { sim: Simulation }) {
   );
 }
 
-/** "¿Y si hubiera invertido…?": compara una inversión pasada contra dólar, plazo fijo, inflación y colchón. */
+/** Simulador: compara una inversión pasada contra dólar, plazo fijo, inflación y colchón. */
 export function SimulatorPage() {
   const { currency, fxKind } = useSettings();
   const [ticker, setTicker] = useState('');
@@ -172,7 +172,7 @@ export function SimulatorPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">¿Y si hubiera invertido…?</h1>
+        <h1 className="text-xl font-semibold">Simulador</h1>
         <p className="mt-1 text-sm text-muted">
           Elegí una acción o CEDEAR, un monto y una fecha: te mostramos cuánto tendrías hoy y si convenía más el dólar, un plazo fijo o
           nada.

@@ -8,13 +8,13 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Cartera**: cuánto vale, cuánto ganaste en total (en lo que tenés, en ventas y en dividendos), rendimiento por año y contra la inflación.
 - **Resumen en palabras**: qué movió tu cartera hoy, cómo va el mes, si le ganás al dólar, tu mejor y peor inversión, y avisos de concentración.
 - **Datos de cada acción**: rango del último año, cuánto subió o bajó (1 mes a 5 años), cuánto se mueve en un día normal, peor caída y cuánto tiene que subir para volver a tu precio promedio.
-- **Simulador "¿Y si hubiera invertido…?"**: un monto en una fecha pasada contra dólar, plazo fijo, inflación y pesos guardados, con dividendos y el peor momento del camino.
+- **Simulador**: un monto en una fecha pasada contra dólar, plazo fijo, inflación y pesos guardados, con dividendos y el peor momento del camino.
 - **Evolución**: gráfico del valor de la cartera contra la plata puesta, y TIR anual.
 - **Rendimiento mes a mes**: calendario con el rendimiento de cada mes y de cada año.
 - **Gráfico de cada activo**: línea o velas, medias móviles de 50 y 200 días, tus compras y ventas, y la línea de tu precio promedio.
 - **CCL implícito de los CEDEARs**: a qué dólar estás comprando y si el CEDEAR está caro o barato contra el CCL.
 - **Mapa de la cartera**: cada activo es un rectángulo del tamaño de tu tenencia, en verde o rojo según cómo le fue.
-- **¿Le ganaste a…?**: compara tu cartera contra inflación, dólar MEP, plazo fijo, Merval y S&P 500,
+- **Comparativa**: compara tu cartera contra inflación, dólar MEP, plazo fijo, Merval y S&P 500,
   simulando que la misma plata entró y salió en las mismas fechas.
 - **Rendimiento real**: cuánto ganaste descontando la inflación.
 - **Dividendos**: detecta los dividendos que pagaron tus activos y te sugiere registrarlos con la retención habitual.
@@ -94,7 +94,7 @@ server/src/
     history.ts     → evolución, benchmarks y TIR
     journal.ts     → diario de decisiones
     importer.ts    → lectura de CSV
-    simulator.ts   → simulador "¿Y si hubiera invertido…?"
+    simulator.ts   → simulador de inversiones pasadas
     alerts.ts      → alertas de precio
     cedear.ts      → CCL implícito y brecha de los CEDEARs
   cedears.ts     → tabla de ratios de los CEDEARs
