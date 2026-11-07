@@ -46,3 +46,20 @@ export function lastMarketTime(now: number = Date.now()): number {
   }
   return now;
 }
+
+const FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * fetch con tiempo límite: si la fuente no responde en 10 segundos, se corta y se sigue
+ * con lo guardado. Sin esto, una API colgada dejaría la pantalla cargando para siempre.
+ */
+export async function fetchWithTimeout(url: string, source: string, init: RequestInit = {}): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new Error(`${source} no respondió en ${FETCH_TIMEOUT_MS / 1000} segundos`);
+    }
+    throw new Error(`No se pudo conectar con ${source}`);
+  }
+}

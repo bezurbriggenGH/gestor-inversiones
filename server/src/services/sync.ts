@@ -12,6 +12,7 @@ import { usSymbolOf } from '../cedears.ts';
 const PRICE_TTL_MS = 15 * 60_000; // precios: con el mercado abierto, como mucho cada 15 minutos
 const FX_TTL_MS = 60 * 60_000; // dólar: como mucho cada hora
 const INDEX_TTL_MS = 6 * 60 * 60_000; // índices de referencia: cada 6 horas
+const DAILY_TTL_MS = 24 * 60 * 60_000; // historiales completos que la fuente no da por partes
 
 // Si llegan dos pedidos a la vez para lo mismo, comparten la misma consulta
 const inflight = new Map<string, Promise<void>>();
@@ -135,14 +136,20 @@ async function syncUnderlying(ticker: string): Promise<void> {
 export function syncFx(force = false): Promise<void> {
   return once('fx', async () => {
     if (!force && !stale('fx', FX_TTL_MS)) return;
+    // ArgentinaDatos solo entrega el historial completo (años de datos), así que se baja
+    // una vez por día. Cada hora alcanza con el valor del momento de DolarApi.
+    const fullHistory = force || stale('fx-history', DAILY_TTL_MS);
     for (const kind of FX_KINDS) {
-      saveFx(kind, await fetchFxHistory(kind));
+      if (fullHistory) saveFx(kind, await fetchFxHistory(kind));
       try {
         saveFx(kind, [await fetchFxToday(kind)]);
       } catch {
-        // El historial ya alcanza; el valor del momento es un extra
+        // Sin el valor del momento, se completa con el historial (si no se bajó recién)
+        if (fullHistory) continue;
+        saveFx(kind, await fetchFxHistory(kind));
       }
     }
+    if (fullHistory) markSynced('fx-history');
     markSynced('fx');
   });
 }
@@ -150,13 +157,25 @@ export function syncFx(force = false): Promise<void> {
 export function syncIndices(force = false): Promise<void> {
   return once('indices', async () => {
     if (!force && !stale('indices', INDEX_TTL_MS)) return;
+    // Merval y SPY: solo los días que faltan (con 7 de margen), como los precios
+    const since = (series: string) => {
+      const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM index_values WHERE series = ?', series)?.d;
+      return last ? addDays(last, -7) : undefined;
+    };
     const jobs: [string, () => Promise<IndexPoint[]>][] = [
-      ['uva', fetchUva],
-      ['plazofijo', fetchDepositRate],
-      ['merval', () => fetchYahooSeries('^MERV')],
-      ['spy', () => fetchYahooSeries('SPY.BA')],
+      ['merval', () => fetchYahooSeries('^MERV', since('merval'))],
+      ['spy', () => fetchYahooSeries('SPY.BA', since('spy'))],
     ];
-    const results = await Promise.allSettled(jobs.map(async ([name, fn]) => saveIndex(name, await fn())));
+    // UVA y plazo fijo se publican una vez por día y la fuente solo da el historial completo
+    for (const [name, fn] of [['uva', fetchUva], ['plazofijo', fetchDepositRate]] as const) {
+      if (force || stale(`index-full:${name}`, DAILY_TTL_MS)) jobs.push([name, fn]);
+    }
+    const results = await Promise.allSettled(
+      jobs.map(async ([name, fn]) => {
+        saveIndex(name, await fn());
+        markSynced(`index-full:${name}`);
+      }),
+    );
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length === jobs.length) throw new Error('No se pudo actualizar ningún índice de referencia');
     markSynced('indices');

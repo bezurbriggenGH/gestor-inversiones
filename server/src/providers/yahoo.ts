@@ -1,5 +1,6 @@
 // Precios diarios desde Yahoo Finance (API no oficial, sin clave).
 // Los instrumentos de BYMA usan el sufijo .BA: GGAL.BA, YPFD.BA, MELI.BA (CEDEAR), etc.
+import { fetchWithTimeout } from '../util.ts';
 
 export interface Bar {
   date: string;
@@ -46,7 +47,7 @@ export async function fetchChart(
   }
 
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  const res = await fetchWithTimeout(url, 'Yahoo Finance', { headers: { 'User-Agent': USER_AGENT } });
   if (res.status === 404) throw new YahooNotFound(symbol);
   if (!res.ok) throw new Error(`Yahoo Finance respondió ${res.status} para ${symbol}`);
 
