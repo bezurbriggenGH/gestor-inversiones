@@ -240,6 +240,30 @@ export interface ImportResult {
   summary: { total: number; ok: number; errors: number; duplicates: number };
 }
 
+export type SimAlternative = 'activo' | 'dolar' | 'plazofijo' | 'inflacion' | 'colchon';
+
+export interface Simulation {
+  ticker: string;
+  name: string;
+  type: AssetType;
+  currency: Currency;
+  amount: number;
+  invested: number;
+  startDate: string;
+  startPrice: number;
+  units: number;
+  endDate: string;
+  years: number;
+  dividendsCash: number;
+  results: (
+    | { key: SimAlternative; label: string; available: false }
+    | { key: SimAlternative; label: string; available: true; value: number; gain: number; return: number; annual: number | null }
+  )[];
+  worst: { date: string; return: number };
+  best: { date: string; return: number };
+  points: ({ date: string } & Record<SimAlternative, number | null>)[];
+}
+
 export class AuthError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -280,6 +304,8 @@ export const api = {
   operation: (id: number, c: Currency, k: FxKind) => request<OperationDetail>(`/operations/${id}?${q(c, k)}`),
   deleteOperation: (id: number) => del(`/operations/${id}`),
 
+  simulate: (ticker: string, amount: number, date: string, c: Currency, k: FxKind) =>
+    request<Simulation>(`/simulate?ticker=${encodeURIComponent(ticker)}&amount=${amount}&date=${date}&${q(c, k)}`),
   alerts: () => request<Alert[]>('/alerts'),
   addAlert: (ticker: string, direction: 'ARRIBA' | 'ABAJO', price: number) => post<{ id: number }>('/alerts', { ticker, direction, price }),
   deleteAlert: (id: number) => del(`/alerts/${id}`),

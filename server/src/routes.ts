@@ -19,6 +19,7 @@ import { buildJournal } from './services/journal.ts';
 import { CSV_TEMPLATE, parseCsv } from './services/importer.ts';
 import { checkAlerts, listAlerts } from './services/alerts.ts';
 import { searchCatalog } from './catalog.ts';
+import { simulate } from './services/simulator.ts';
 import { classify, normalizeTicker } from './tickers.ts';
 import { checkRateLimit, currentUser, endSession, login, register, requireUser, startSession, userId } from './auth.ts';
 import { HttpError, arDate } from './util.ts';
@@ -84,6 +85,20 @@ router.get('/search', (req, res) => {
   const owned = new Set(all<{ ticker: string }>('SELECT ticker FROM user_assets WHERE user_id = ?', userId(res)).map((r) => r.ticker));
   const results = searchCatalog(String(req.query.q ?? '')).map((r) => ({ ...r, owned: owned.has(r.ticker) }));
   res.json(results);
+});
+
+/** Simulador: ¿cuánto tendría hoy si hubiera invertido `amount` pesos en `ticker` el día `date`? */
+router.get('/simulate', async (req, res) => {
+  const ticker = normalizeTicker(String(req.query.ticker ?? ''));
+  if (!/^[A-Z0-9]{1,10}$/.test(ticker)) throw new HttpError(400, 'Elegí un activo');
+  const amount = Number(req.query.amount);
+  if (!(amount > 0) || amount > 1e13) throw new HttpError(400, 'Ingresá un monto mayor a cero');
+  const date = String(req.query.date ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, 'Elegí una fecha');
+  await ensureCatalogAsset(ticker);
+  await Promise.allSettled([syncAsset(ticker), syncFx(), syncIndices()]);
+  const { currency, fx } = q(req);
+  res.json(simulate(ticker, amount, date, currency, fx));
 });
 
 // ---------- Activos ----------

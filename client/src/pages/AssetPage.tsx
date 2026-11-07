@@ -6,6 +6,7 @@ import { useSettings } from '../settings';
 import { date, money, num, pct, tone } from '../format';
 import { PriceChart } from '../components/PriceChart';
 import { CedearPanel } from '../components/CedearPanel';
+import { AssetStats } from '../components/AssetStats';
 import { OperationForm, type OperationPrefill } from '../components/OperationForm';
 import { AlertForm } from '../components/AlertForm';
 import { Button, ErrorBox, Loading } from '../components/ui';
@@ -73,6 +74,13 @@ export function AssetPage() {
 
   const { asset, position: p, operations } = data;
   const tradeOps = operations.filter((o) => o.type !== 'DIVIDENDO');
+  // Qué compone el resultado total, solo las partes que existen
+  const totalDetail = [
+    p.realized ? `ventas ${money(p.realized, currency, true)}` : '',
+    p.dividends ? `dividendos ${money(p.dividends, currency, true)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ') || undefined;
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,6 +109,7 @@ export function AssetPage() {
           <span className="text-xs text-muted">{asset.type === 'ACCION' ? 'Acción argentina' : 'CEDEAR'}</span>
           <span className="mt-2 text-sm">Cant. {num(p.quantity)}</span>
           <span className="tabular text-sm">{money(p.price, currency)}</span>
+          {p.quantity > 0 && <span className="tabular text-xs text-muted">promedio {money(p.avgCost, currency)}</span>}
         </div>
 
         <div className="flex flex-col justify-center gap-3 sm:max-w-56">
@@ -115,17 +124,39 @@ export function AssetPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:col-span-2 md:grid-cols-4">
-          <StatBox label="Gan/Per diaria" value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
-          <StatBox label="Gan/Per no realizada" value={money(p.unrealized, currency, true)} sub={pct(p.unrealizedPct)} cls={tone(p.unrealized)} />
-          <StatBox label="Gan/Per histórica" value={money(p.totalGain, currency, true)} sub={pct(p.totalGainPct)} cls={tone(p.totalGain)} />
-          <StatBox label="Valor de la tenencia" value={money(p.marketValue, currency)} />
-          <StatBox label="Precio promedio de compra" value={money(p.avgCost, currency)} sub="incluye comisiones" />
-          <StatBox label="Ganancia realizada" value={money(p.realized, currency, true)} cls={tone(p.realized)} />
-          <StatBox label="Dividendos cobrados" value={money(p.dividends, currency, true)} cls={tone(p.dividends)} />
-          <StatBox label="Total invertido" value={money(p.invested, currency)} sub="suma de todas las compras" />
-        </div>
+        {p.quantity > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:col-span-2 md:grid-cols-4">
+            <StatBox label="Hoy" value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
+            <StatBox label="Valor de lo que tenés" value={money(p.marketValue, currency)} sub={`${num(p.quantity)} × ${money(p.price, currency)}`} />
+            <StatBox
+              label="Ganancia en lo que tenés"
+              value={money(p.unrealized, currency, true)}
+              sub={`${pct(p.unrealizedPct)} · te costó ${money(p.costBasis, currency)}`}
+              cls={tone(p.unrealized)}
+            />
+            <StatBox
+              label="Resultado total"
+              value={money(p.totalGain, currency, true)}
+              sub={totalDetail}
+              cls={tone(p.totalGain)}
+            />
+          </div>
+        ) : (
+          <p className="rounded-lg bg-card px-4 py-3 text-sm sm:col-span-2">
+            {operations.length === 0 ? (
+              <span className="text-muted">Todavía no registraste operaciones. Cargá tu primera compra para seguir tu resultado.</span>
+            ) : (
+              <>
+                Ya no tenés {asset.ticker}. Resultado final de todas tus operaciones:{' '}
+                <span className={`tabular font-semibold ${tone(p.totalGain)}`}>{money(p.totalGain, currency, true)}</span>
+                {totalDetail && <span className="text-muted"> ({totalDetail})</span>}
+              </>
+            )}
+          </p>
+        )}
       </section>
+
+      <AssetStats series={data.series} currency={currency} avgCost={p.quantity > 0 ? p.avgCost : 0} />
 
       {data.cedear && <CedearPanel ticker={asset.ticker} info={data.cedear} />}
 

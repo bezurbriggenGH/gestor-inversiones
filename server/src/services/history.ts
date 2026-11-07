@@ -35,7 +35,7 @@ interface Flow {
   amount: number; // pesos que ENTRAN a la inversión (+ compra, − venta o dividendo)
 }
 
-function loadIndex(series: string): DateSeries {
+export function loadIndex(series: string): DateSeries {
   return new DateSeries(all('SELECT date, value FROM index_values WHERE series = ? ORDER BY date', series));
 }
 
@@ -46,7 +46,7 @@ function addDaysIso(iso: string, n: number): string {
 }
 
 /** Índice acumulado de un plazo fijo a 30 días renovado, a partir de la TNA diaria. */
-function plazoFijoIndex(start: string, end: string): DateSeries {
+export function plazoFijoIndex(start: string, end: string): DateSeries {
   const tna = loadIndex('plazofijo');
   if (tna.empty) return tna;
   const rows: { date: string; value: number }[] = [];

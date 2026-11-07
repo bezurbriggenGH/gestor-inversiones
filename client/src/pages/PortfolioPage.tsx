@@ -1,56 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type History, type Portfolio, type PortfolioPosition } from '../api';
+import { api, type History, type PortfolioPosition } from '../api';
 import { DATA_KEYS, useHistory, usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
-import { FX_LABEL, date, money, pct, tone } from '../format';
+import { money, pct, tone } from '../format';
 import { Button, ErrorBox, Loading, Triangle } from '../components/ui';
 import { AddAssetDialog } from '../components/AddAssetDialog';
 import { LineChart, type ChartLine } from '../components/LineChart';
 import { MonthlyReturns } from '../components/MonthlyReturns';
-
-function Stat({ label, value, sub, valueClass = '', hint }: { label: string; value: string; sub?: string; valueClass?: string; hint?: string }) {
-  return (
-    <div className="flex flex-col gap-1" title={hint}>
-      <span className="text-sm text-muted">{label}</span>
-      <span className={`tabular text-xl font-semibold ${valueClass}`}>{value}</span>
-      {sub && <span className={`tabular text-sm ${valueClass}`}>{sub}</span>}
-    </div>
-  );
-}
-
-function Summary({ data }: { data: Portfolio }) {
-  const { currency } = useSettings();
-  const s = data.summary;
-  const real = data.realReturn;
-  return (
-    <section className="grid grid-cols-2 gap-6 rounded-xl bg-panel p-6 lg:grid-cols-3 xl:grid-cols-6">
-      <Stat label="Valor actual" value={money(s.marketValue, currency)} sub={`Costo ${money(s.costBasis, currency)}`} />
-      <Stat label="Ganancia no realizada" value={money(s.unrealized, currency, true)} sub={pct(s.unrealizedPct)} valueClass={tone(s.unrealized)} />
-      <Stat label="Variación diaria" value={money(s.dayChange, currency, true)} sub={pct(s.dayChangePct)} valueClass={tone(s.dayChange)} />
-      <Stat label="Ganancia realizada" value={money(s.realized, currency, true)} sub="por ventas ya hechas" valueClass={tone(s.realized)} />
-      <Stat label="Dividendos cobrados" value={money(s.dividends, currency, true)} sub="netos de retenciones" valueClass={tone(s.dividends)} />
-      {real ? (
-        <Stat
-          label="Contra la inflación"
-          value={pct(real.pct)}
-          sub={`${money(real.gain, 'ARS', true)} de hoy`}
-          valueClass={tone(real.pct)}
-          hint="Cuánto más (o menos) tenés que si esa misma plata solo hubiera seguido a la inflación"
-        />
-      ) : (
-        <Stat label="Contra la inflación" value="—" sub="sin operaciones" />
-      )}
-      {data.fx && (
-        <p className="col-span-full text-xs text-muted">
-          Dólar {FX_LABEL[data.fxKind]}: {money(data.fx.rate, 'ARS')} ({date(data.fx.date)})
-          {currency === 'USD' && ' · cada operación se convierte con el dólar del día en que se hizo'}
-        </p>
-      )}
-    </section>
-  );
-}
+import { Insights, PortfolioSummary } from '../components/PortfolioSummary';
 
 function Evolution({ history }: { history: History }) {
   const { currency } = useSettings();
@@ -156,7 +115,8 @@ export function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <Summary data={data} />
+      <PortfolioSummary data={data} history={history.data} />
+      <Insights data={data} history={history.data} />
 
       {data.errors.length > 0 && (
         <p className="rounded-lg border border-[#b8964f]/30 bg-[#b8964f]/10 px-3 py-2 text-xs text-[#c9ab6a]">

@@ -12,6 +12,7 @@ import { BenchmarkPage } from './pages/BenchmarkPage';
 import { JournalPage } from './pages/JournalPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { ImportPage } from './pages/ImportPage';
+import { SimulatorPage } from './pages/SimulatorPage';
 
 export function App() {
   const { user, loading } = useAuth();
@@ -40,6 +41,7 @@ export function App() {
             <Route path="/diario" element={<JournalPage />} />
             <Route path="/alertas" element={<AlertsPage />} />
             <Route path="/importar" element={<ImportPage />} />
+            <Route path="/simulador" element={<SimulatorPage />} />
             <Route path="*" element={<p className="text-muted">Página no encontrada.</p>} />
           </Routes>
         </div>

@@ -50,18 +50,17 @@ export function OperationPage() {
       </div>
 
       <section className="grid gap-6 px-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Row label="ID">{op.id}</Row>
         <Row label="Fecha">{date(op.date)}</Row>
         <Row label="Tipo de operación">
-          <span className={TYPE_STYLE[op.type]}>{op.type}</span>
+          <span className={TYPE_STYLE[op.type]}>{{ COMPRA: 'Compra', VENTA: 'Venta', DIVIDENDO: 'Dividendo' }[op.type]}</span>
         </Row>
         <Row label={isDividend ? 'Acciones' : 'Cantidad'}>{num(op.quantity)}</Row>
         <Row label={isDividend ? 'Dividendo por acción' : 'Precio unitario'}>
-          <span className="text-up">{money(op.priceConv, currency)}</span>
+          {money(op.priceConv, currency)}
         </Row>
         <Row label={isDividend ? 'Retenciones' : 'Comisiones'}>{money(op.feesConv, currency)}</Row>
         <Row label={op.type === 'COMPRA' ? 'Monto total pagado' : 'Monto cobrado (neto)'}>
-          <span className="text-up">{money(op.totalConv, currency)}</span>
+          <span className="font-semibold">{money(op.totalConv, currency)}</span>
         </Row>
         {op.type === 'VENTA' && op.realized != null && (
           <Row label="Resultado de la venta">
