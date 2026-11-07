@@ -195,7 +195,14 @@ export async function syncAll(): Promise<string[]> {
 
 /** Da de alta un instrumento en el catálogo global con todo su historial. */
 export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION' | 'CEDEAR') {
-  if (get('SELECT 1 FROM assets WHERE ticker = ?', ticker)) return;
+  if (get('SELECT 1 FROM assets WHERE ticker = ?', ticker)) {
+    // Activos guardados antes de registrar splits (y que nadie siguió desde entonces):
+    // se completan ahora, porque las operaciones se ajustan con esos splits
+    if (!get('SELECT 1 FROM sync_state WHERE key = ?', `splits:${ticker}`)) {
+      await syncAsset(ticker, true).catch((e) => console.warn(`[sync] splits de ${ticker}:`, (e as Error).message));
+    }
+    return;
+  }
   const chart = await fetchChart(symbol, { range: '10y' });
   if (chart.bars.length === 0) throw new Error(`${ticker} no tiene precios`);
   run('INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES (?, ?, ?, ?, ?)', ticker, symbol, chart.name, type, Date.now());

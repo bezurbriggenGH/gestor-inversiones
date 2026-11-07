@@ -45,6 +45,11 @@ export function ImportPage() {
     let text: string;
     try {
       text = /\.xlsx$/i.test(file.name) ? await xlsxToCsv(await file.arrayBuffer()) : await readText(file);
+      // Algunos brokers (como InvertirOnline) exportan un .xls que en realidad es una tabla HTML.
+      // Un .xls de verdad es binario y no se puede leer acá.
+      if (/\.xls$/i.test(file.name) && !/<table/i.test(text)) {
+        throw new Error('Este .xls está en el formato viejo de Excel. Abrilo y guardalo como .xlsx (o exportalo como CSV) y subilo de nuevo.');
+      }
     } catch (err) {
       check.reset();
       setPreview(null);
@@ -63,7 +68,7 @@ export function ImportPage() {
       <div>
         <h1 className="text-xl font-semibold">Importar operaciones</h1>
         <p className="mt-1 text-sm text-muted">
-          Subí el Excel (.xlsx) o CSV que exporta tu broker. Bull Market: descargá la <b>Cuenta Corriente</b> y subila tal cual. Reconocemos columnas como <b>Fecha</b>, <b>Tipo/Operación</b>,{' '}
+          Subí el Excel (.xlsx o .xls) o CSV que exporta tu broker. Bull Market: descargá la <b>Cuenta Corriente</b> y subila tal cual. InvertirOnline: descargá los <b>Movimientos históricos</b> y subilos tal cual. Reconocemos columnas como <b>Fecha</b>, <b>Tipo/Operación</b>,{' '}
           <b>Ticker/Especie</b>, <b>Cantidad</b>, <b>Precio</b> y <b>Comisión</b>, con números en formato argentino (1.234,56) o con punto.
         </p>
       </div>
@@ -76,9 +81,9 @@ export function ImportPage() {
             onFile(e.dataTransfer.files?.[0]);
           }}
           className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line px-4 py-8 text-center transition hover:border-muted">
-          <span className="text-sm">{fileName || 'Elegí un archivo .xlsx o .csv'}</span>
+          <span className="text-sm">{fileName || 'Elegí un archivo .xlsx, .xls o .csv'}</span>
           <span className="text-xs text-muted">o arrastralo acá</span>
-          <input type="file" accept=".xlsx,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+          <input type="file" accept=".xlsx,.xls,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
         </label>
         <div className="flex flex-col gap-2 text-sm">
           <a href="/api/import/template" className="text-link hover:underline">

@@ -10,6 +10,7 @@ import {
   getOperations,
   getRawOperations,
   adjustForSplits,
+  loadFx,
   parseCurrency,
   parseFxKind,
   requireUserAsset,
@@ -288,6 +289,22 @@ router.post('/import', async (req, res) => {
   if (parsed.error) throw new HttpError(400, parsed.error);
   const rows = parsed.rows.map((r) => ({ ...r, ticker: r.ticker ? normalizeTicker(r.ticker) : null, status: (r.ignored ? 'ignorada' : 'ok') as 'ok' | 'error' | 'duplicada' | 'ignorada' }));
   if (rows.length > 2000) throw new HttpError(400, 'Máximo 2000 operaciones por archivo');
+
+  // Dividendos cobrados en dólares: se pasan a pesos con el dólar MEP de ese día
+  if (rows.some((r) => r.priceInUsd)) {
+    await syncFx().catch(() => {});
+    const mep = loadFx('bolsa');
+    for (const r of rows) {
+      if (!r.priceInUsd || !r.date || r.price == null) continue;
+      if (mep.empty) {
+        r.errors.push('no hay cotización del dólar MEP para pasar el dividendo a pesos');
+        continue;
+      }
+      const rate = mep.at(r.date);
+      r.price = Math.round(r.price * rate * 100) / 100;
+      r.note = `${r.note} × MEP $${rate.toLocaleString('es-AR')}`;
+    }
+  }
 
   // Verificar que cada ticker exista en BYMA (se agrega al catálogo global si hace falta)
   const tickers = [...new Set(rows.filter((r) => r.ticker && !r.errors.length && !r.ignored).map((r) => r.ticker as string))];

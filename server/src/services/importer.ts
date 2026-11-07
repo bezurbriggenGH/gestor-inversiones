@@ -8,6 +8,10 @@
 // Formato Bull Market ("Cuenta Corriente"): columnas Liquida, Operado, Comprobante,
 // Cantidad (negativa en ventas), Especie, Precio (ya incluye gastos) e Importe.
 // Las filas de plata (Recibo de cobro, Orden de pago) se ignoran.
+//
+// Formato InvertirOnline ("Movimientos históricos", un .xls que en realidad es una tabla HTML):
+// el ticker viene dentro del tipo ("Compra(GGAL)"), la comisión está en tres columnas
+// (Comis., Iva Com., Otros Imp.) y hay una cuenta en pesos y otra en dólares.
 import type { OpType } from './portfolio.ts';
 
 export interface ParsedRow {
@@ -22,6 +26,33 @@ export interface ParsedRow {
   errors: string[];
   /** Si la fila no es una operación (por ejemplo, un depósito), por qué se ignora. */
   ignored: string | null;
+  /** El precio está en dólares y hay que pasarlo a pesos con el MEP de ese día. */
+  priceInUsd?: boolean;
+}
+
+const decodeEntities = (s: string) =>
+  s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+/** Convierte la primera tabla de una página HTML en texto separado por ";". */
+export function htmlTableToCsv(html: string): string {
+  const table = html.match(/<table[\s\S]*?<\/table>/i)?.[0] ?? '';
+  const rows = table.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
+  return rows
+    .map((tr) =>
+      (tr.match(/<t[hd][^>]*>[\s\S]*?<\/t[hd]>/gi) ?? [])
+        .map((td) => decodeEntities(td.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim())
+        .map((cell) => (/[;"]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell))
+        .join(';'),
+    )
+    .filter((line) => line.replace(/;/g, '').trim())
+    .join('\n');
 }
 
 // En orden de preferencia: si hay fecha de operación y de liquidación, gana la de operación
@@ -111,12 +142,18 @@ function parseType(raw: string | undefined): OpType | null {
 }
 
 export function parseCsv(text: string): { rows: ParsedRow[]; columns: Record<string, string | null>; error?: string } {
+  if (/<table/i.test(text)) text = htmlTableToCsv(text);
   const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return { rows: [], columns: {}, error: 'El archivo está vacío o solo tiene encabezados' };
 
   const header = lines[0];
   const sep = [';', ',', '\t'].sort((a, b) => header.split(b).length - header.split(a).length)[0];
   const headers = splitLine(header, sep).map(normalize);
+
+  if (headers.includes('tipo mov') && headers.includes('tipo cuenta')) {
+    const columns = Object.fromEntries(splitLine(header, sep).map((h) => [normalize(h), h]));
+    return { rows: parseIol(headers, lines.slice(1), sep), columns };
+  }
 
   const index: Record<string, number> = {};
   const columns: Record<string, string | null> = {};
@@ -185,7 +222,89 @@ export function parseCsv(text: string): { rows: ParsedRow[]; columns: Record<str
   return { rows, columns };
 }
 
-export const CSV_TEMPLATE = `Fecha;Tipo;Ticker;Cantidad;Precio;Comision;Nota
+// Bonos argentinos (AL30, GD35, AE38D, TX26, TZX26, S31O5, BOPREAL BPOC7…): la app no los maneja
+const BOND = /^((AL|GD|AE|AN|GE|BP|TX)\d{2}[DC]?|TZX\w+|S\d{2}[A-Z]\d[DC]?|BPO[A-Z]\d[DC]?)$/;
+
+/** Formato InvertirOnline: ver el comentario al principio del archivo. */
+function parseIol(headers: string[], lines: string[], sep: string): ParsedRow[] {
+  const col = {
+    type: headers.indexOf('tipo mov'),
+    date: headers.indexOf('concert'),
+    quantity: headers.indexOf('cant titulos'),
+    price: headers.indexOf('precio'),
+    fees: ['comis', 'iva com', 'otros imp'].map((h) => headers.indexOf(h)),
+    amount: headers.indexOf('monto'),
+    account: headers.indexOf('tipo cuenta'),
+  };
+  // Gastos en pesos que IOL cobra aparte por un dividendo pagado en dólares (misma fecha y ticker)
+  const usdDividendFees = new Map<string, { fees: number; rows: ParsedRow[] }>();
+  const usdDividends: ParsedRow[] = [];
+
+  const rows = lines.map((line, i): ParsedRow | null => {
+    const cells = splitLine(line, sep);
+    const typeText = cells[col.type] ?? '';
+    if (normalize(typeText) === 'tipo mov') return null; // encabezado repetido
+    const m = typeText.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+    const kind = normalize(m ? m[1] : typeText);
+    const ticker = m ? m[2].replace(/US\$/i, '').trim().toUpperCase() : null;
+    const inUsd = normalize(cells[col.account] ?? '').includes('dolar');
+    const date = parseDate(cells[col.date]);
+    const fees = col.fees.reduce((sum, j) => sum + Math.abs(parseNumber(cells[j]) ?? 0), 0);
+    const amount = parseNumber(cells[col.amount]) ?? 0;
+    const base: ParsedRow = { line: i + 2, date, type: null, ticker, quantity: null, price: null, fees: 0, note: null, errors: [], ignored: null };
+    const ignore = (why: string): ParsedRow => ({ ...base, ignored: why });
+
+    if (!ticker) return ignore(`${typeText}: entrada o salida de plata, no es una operación`);
+    if (kind.startsWith('transferencia')) return ignore('Transferencia de títulos entre cuentas');
+    if (kind.includes('fci')) return ignore('Fondo común de inversión: la app maneja acciones y CEDEARs');
+    if (BOND.test(ticker) || kind.includes('renta') || kind.includes('amortiz')) return ignore('Bono: la app maneja acciones y CEDEARs');
+
+    if (kind.startsWith('compra') || kind.startsWith('venta')) {
+      if (inUsd) return ignore('Operación en dólares: la app registra compras y ventas en pesos');
+      const quantity = Math.abs(parseNumber(cells[col.quantity]) ?? 0);
+      const price = Math.abs(parseNumber(cells[col.price]) ?? 0);
+      const row: ParsedRow = { ...base, type: kind.startsWith('compra') ? 'COMPRA' : 'VENTA', quantity, price, fees };
+      if (!date) row.errors.push('fecha inválida');
+      if (!/^[A-Z0-9]{1,10}$/.test(ticker)) row.errors.push('ticker inválido');
+      if (!quantity) row.errors.push('cantidad inválida');
+      if (!price) row.errors.push('precio inválido');
+      return row;
+    }
+
+    if (kind.includes('dividend')) {
+      const key = `${date}|${ticker}`;
+      if (amount <= 0) {
+        // Comisión e IVA de un dividendo: se descuentan del dividendo en dólares del mismo día
+        const row = ignore('Gasto o retención cobrada sobre un dividendo');
+        const entry = usdDividendFees.get(key) ?? { fees: 0, rows: [] };
+        entry.fees += Math.abs(amount);
+        entry.rows.push(row);
+        usdDividendFees.set(key, entry);
+        return row;
+      }
+      // Monto ya es neto: el precio es el bruto y las comisiones se restan aparte
+      const row: ParsedRow = { ...base, type: 'DIVIDENDO', quantity: 1, price: amount + fees, fees };
+      if (inUsd) {
+        row.priceInUsd = true;
+        row.note = `Dividendo en dólares: US$ ${amount}`;
+        usdDividends.push(row);
+      }
+      return row;
+    }
+
+    return { ...base, errors: [`tipo desconocido: ${typeText}`] };
+  });
+
+  for (const row of usdDividends) {
+    const entry = usdDividendFees.get(`${row.date}|${row.ticker}`);
+    if (!entry) continue;
+    row.fees += entry.fees; // en pesos: se suman al dividendo ya convertido
+    for (const r of entry.rows) r.ignored = `Gastos del dividendo en dólares de ${row.ticker}: se descuentan de ese dividendo`;
+  }
+  return rows.filter((r): r is ParsedRow => r !== null);
+}
+
+export const CSV_TEMPLATE =`Fecha;Tipo;Ticker;Cantidad;Precio;Comision;Nota
 20/05/2026;Compra;MELI;7;20.000,00;500;Resultados trimestrales
 14/07/2026;Venta;MELI;3;24.000,00;0;Despidos masivos
 10/02/2026;Compra;GGAL;15;7.745;0;
