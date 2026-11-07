@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type History, type PortfolioPosition } from '../api';
 import { DATA_KEYS, useHistory, usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
-import { money, pct, tone } from '../format';
+import { money, num, pct, tone } from '../format';
 import { Button, ErrorBox, Loading, Triangle } from '../components/ui';
 import { AddAssetDialog } from '../components/AddAssetDialog';
 import { LineChart, type ChartLine } from '../components/LineChart';
@@ -80,17 +80,118 @@ function AssetCard({ p, deleting, onDelete }: { p: PortfolioPosition; deleting: 
           )}
         </div>
       </Link>
-      {deleting && (
-        <button
-          onClick={onDelete}
-          className="absolute -right-2 -top-2 grid h-8 w-8 place-items-center rounded-full bg-down text-sm font-bold text-white shadow-lg hover:scale-105"
-          aria-label={`Eliminar ${p.ticker}`}
-        >
-          ✕
-        </button>
-      )}
+      {deleting && <DeleteButton ticker={p.ticker} onClick={onDelete} className="absolute -right-2 -top-2" />}
     </div>
   );
+}
+
+function DeleteButton({ ticker, onClick, className = '' }: { ticker: string; onClick: () => void; className?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`grid h-8 w-8 place-items-center rounded-full bg-down text-sm font-bold text-white shadow-lg hover:scale-105 ${className}`}
+      aria-label={`Eliminar ${ticker}`}
+    >
+      ✕
+    </button>
+  );
+}
+
+/** Vista compacta: una fila por activo, pensada para carteras con muchos activos. */
+function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPosition[]; deleting: boolean; onDelete: (p: PortfolioPosition) => void }) {
+  const { currency } = useSettings();
+  const navigate = useNavigate();
+  const th = 'px-2 py-2.5 font-normal sm:px-3';
+  return (
+    <section className="overflow-x-auto rounded-xl bg-panel">
+      <table className="w-full text-xs sm:text-sm">
+        <thead className="text-left text-xs text-muted">
+          <tr className="border-b border-line">
+            <th className={th}>Activo</th>
+            <th className={`${th} hidden text-right sm:table-cell`}>Hoy</th>
+            <th className={`${th} hidden text-right md:table-cell`}>Cantidad</th>
+            <th className={`${th} hidden text-right lg:table-cell`}>Precio</th>
+            <th className={`${th} text-right`}>Valor</th>
+            <th className={`${th} hidden text-right sm:table-cell`}>Peso</th>
+            <th className={`${th} text-right`}>Ganancia</th>
+            {deleting && <th className={th}><span className="sr-only">Eliminar</span></th>}
+          </tr>
+        </thead>
+        <tbody className="tabular">
+          {positions.map((p) => {
+            const hasPosition = p.quantity > 0;
+            return (
+              <tr
+                key={p.ticker}
+                onClick={() => !deleting && navigate(`/activo/${p.ticker}`)}
+                className={`border-b border-line/60 last:border-0 ${deleting ? '' : 'cursor-pointer hover:bg-card'}`}
+              >
+                <td className="px-2 py-2.5 sm:px-3">
+                  <Link to={`/activo/${p.ticker}`} onClick={(e) => e.stopPropagation()} className="flex items-baseline gap-2">
+                    <span className="font-medium">{p.ticker}</span>
+                    <span className="hidden rounded bg-bg px-1.5 py-0.5 text-[10px] text-muted sm:inline">{p.type === 'ACCION' ? 'Acción' : 'CEDEAR'}</span>
+                  </Link>
+                  <span className="block max-w-28 truncate text-xs text-muted sm:max-w-48">{p.name}</span>
+                </td>
+                <td className={`hidden px-2 py-2.5 sm:px-3 text-right sm:table-cell ${tone(p.dayChangePct)}`}>{pct(p.dayChangePct)}</td>
+                <td className="hidden px-2 py-2.5 sm:px-3 text-right md:table-cell">{hasPosition ? num(p.quantity) : '—'}</td>
+                <td className="hidden px-2 py-2.5 sm:px-3 text-right lg:table-cell">{money(p.price, currency)}</td>
+                <td className="px-2 py-2.5 sm:px-3 text-right">{hasPosition ? money(p.marketValue, currency) : <span className="text-muted">Sin tenencia</span>}</td>
+                <td className="hidden px-2 py-2.5 sm:px-3 text-right text-muted sm:table-cell">{hasPosition ? pct(p.weight).replace('+', '') : '—'}</td>
+                <td className="px-2 py-2.5 sm:px-3 text-right">
+                  {hasPosition ? (
+                    <>
+                      <span className={`font-medium ${tone(p.unrealizedPct)}`}>{pct(p.unrealizedPct)}</span>
+                      <span className={`block text-xs ${tone(p.unrealized)}`}>{money(p.unrealized, currency, true)}</span>
+                    </>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </td>
+                {deleting && (
+                  <td className="px-2 py-2.5 sm:px-3 text-right">
+                    <DeleteButton ticker={p.ticker} onClick={() => onDelete(p)} className="ml-auto h-7 w-7" />
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+type View = 'tarjetas' | 'lista';
+type Sort = 'valor' | 'ganancia' | 'hoy' | 'ticker';
+
+const SORTS: Record<Sort, { label: string; compare: (a: PortfolioPosition, b: PortfolioPosition) => number }> = {
+  valor: { label: 'Mayor tenencia', compare: (a, b) => b.marketValue - a.marketValue },
+  ganancia: { label: 'Mayor ganancia %', compare: (a, b) => b.unrealizedPct - a.unrealizedPct },
+  hoy: { label: 'Mayor suba hoy', compare: (a, b) => b.dayChangePct - a.dayChangePct },
+  ticker: { label: 'Ticker (A-Z)', compare: (a, b) => a.ticker.localeCompare(b.ticker) },
+};
+
+// Preferencias de esta vista: se recuerdan en el navegador
+function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return allowed.includes(v as T) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function usePref<T extends string>(key: string, allowed: readonly T[], fallback: T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => readPref(key, allowed, fallback));
+  const set = (v: T) => {
+    setValue(v);
+    try {
+      localStorage.setItem(key, v);
+    } catch {
+      // sin almacenamiento: dura hasta recargar
+    }
+  };
+  return [value, set];
 }
 
 export function PortfolioPage() {
@@ -98,6 +199,9 @@ export function PortfolioPage() {
   const history = useHistory();
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [view, setView] = usePref<View>('cartera.vista', ['tarjetas', 'lista'], 'tarjetas');
+  const [sort, setSort] = usePref<Sort>('cartera.orden', ['valor', 'ganancia', 'hoy', 'ticker'], 'valor');
+  const [showEmpty, setShowEmpty] = usePref<'si' | 'no'>('cartera.sinTenencia', ['si', 'no'], 'no');
   const qc = useQueryClient();
 
   const remove = useMutation({
@@ -109,6 +213,15 @@ export function PortfolioPage() {
     const msg = `¿Eliminar ${p.ticker}? Se borran también todas sus operaciones registradas.`;
     if (window.confirm(msg)) remove.mutate(p.ticker);
   }
+
+  const all = data?.positions ?? [];
+  const emptyCount = all.filter((p) => p.quantity <= 0).length;
+  // Si no hay ningún activo con tenencia, se muestran todos (si no, la pantalla quedaría vacía)
+  const hideEmpty = showEmpty === 'no' && emptyCount < all.length;
+  const positions = useMemo(
+    () => all.filter((p) => !hideEmpty || p.quantity > 0).sort((a, b) => SORTS[sort].compare(a, b) || a.ticker.localeCompare(b.ticker)),
+    [all, hideEmpty, sort],
+  );
 
   if (isLoading) return <Loading label="Actualizando precios…" />;
   if (error || !data) return <ErrorBox error={error} />;
@@ -137,11 +250,53 @@ export function PortfolioPage() {
           </p>
         </div>
       ) : (
-        <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {data.positions.map((p) => (
-            <AssetCard key={p.ticker} p={p} deleting={deleting} onDelete={() => confirmDelete(p)} />
-          ))}
-        </section>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
+            <div className="flex rounded-lg bg-panel p-1" role="group" aria-label="Forma de ver los activos">
+              {(['tarjetas', 'lista'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  aria-pressed={view === v}
+                  className={`rounded-md px-3 py-1.5 transition ${view === v ? 'bg-card text-text' : 'text-muted hover:text-text'}`}
+                >
+                  {v === 'tarjetas' ? 'Tarjetas' : 'Lista'}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-muted">
+              Ordenar por
+              <select
+                id="cartera-orden"
+                value={sort}
+                onChange={(e) => setSort(e.target.value as Sort)}
+                className="rounded-lg border border-line bg-bg px-2 py-1.5 text-text outline-none focus:border-muted"
+              >
+                {Object.entries(SORTS).map(([k, s]) => (
+                  <option key={k} value={k}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {emptyCount > 0 && emptyCount < all.length && (
+              <label className="flex cursor-pointer items-center gap-2 text-muted">
+                <input id="cartera-sin-tenencia" type="checkbox" checked={showEmpty === 'si'} onChange={(e) => setShowEmpty(e.target.checked ? 'si' : 'no')} />
+                Mostrar sin tenencia ({emptyCount})
+              </label>
+            )}
+          </div>
+
+          {view === 'lista' ? (
+            <AssetTable positions={positions} deleting={deleting} onDelete={confirmDelete} />
+          ) : (
+            <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {positions.map((p) => (
+                <AssetCard key={p.ticker} p={p} deleting={deleting} onDelete={() => confirmDelete(p)} />
+              ))}
+            </section>
+          )}
+        </div>
       )}
 
       <div className="flex flex-wrap gap-4">
