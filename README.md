@@ -26,7 +26,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Cuentas de usuario** con email y contraseña.
 - **Instalable** en el celular o la compu (PWA).
 
-## Cómo correrla en tu compu
+## Instalación y ejecución
 
 ### 1. Instalar lo necesario (solo la primera vez)
 
@@ -59,23 +59,6 @@ creá tu cuenta. Para apagarla, en la terminal apretá `Ctrl + C`.
 
 En Windows, si PowerShell bloquea `npm`, usá `npm.cmd run setup` y `npm.cmd run dev`.
 
-### Llevar tus datos a otra compu
-
-La base de datos **no se sube a GitHub** (la carpeta `server/data/` está en `.gitignore`), así que
-en una compu nueva la app arranca vacía. Los precios se descargan solos, pero tus operaciones,
-notas y alertas no. Para llevarlas:
-
-1. En la compu original, apagá la app (`Ctrl + C`).
-2. Copiá el archivo `server/data/finanzas.db` (por ejemplo, a un pendrive o a la nube).
-3. En la compu nueva, ponelo en la misma carpeta `server/data/` (creala si no existe) **antes** de
-   correr `npm run dev`.
-4. Entrá con el mismo email y contraseña de siempre: los usuarios también están en ese archivo.
-
-Si no tenés el archivo, otra opción es crear una cuenta nueva y volver a importar el Excel de tu
-broker desde **Importar**.
-
-Conviene hacer esta copia de `finanzas.db` de vez en cuando como respaldo.
-
 ### Cuándo se actualizan los precios
 
 Mientras la app está prendida, se consultan las fuentes de datos solo cuando el precio puede haber
@@ -83,22 +66,6 @@ cambiado: con BYMA abierto (lunes a viernes de 11 a 17, hora argentina) como muc
 minutos, y una vez después del cierre para guardar el precio final. De noche y los fines de semana
 no se consulta nada. Si la app estuvo apagada varios días, al prenderla se completan los días que
 falten.
-
-## Publicarla en internet
-
-El proyecto incluye un `Dockerfile` que compila el frontend y lo sirve desde el mismo servidor.
-Sirve para cualquier servicio que acepte Docker (Railway, Render, Fly.io):
-
-1. Conectá el repositorio de GitHub al servicio.
-2. Montá un **volumen persistente en `/data`** (ahí vive la base SQLite; sin volumen se borra en cada deploy).
-3. El servicio expone el puerto `3001`.
-
-Para probar la versión de producción localmente:
-
-```bash
-npm run build
-npm start
-```
 
 ## Tecnologías
 
