@@ -20,7 +20,8 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Dividendos**: detecta los dividendos que pagaron tus activos y te sugiere registrarlos con la retención habitual.
 - **Diario de decisiones**: para cada compra y venta, qué hizo el precio 30, 90 y 180 días después, y tu porcentaje de aciertos.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
-- **Importar operaciones** desde un CSV de tu broker o de Excel (formato argentino de números y fechas).
+- **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias.
+- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos.
 - **Buscador** con más de 140 acciones argentinas y CEDEARs.
 - **Cuentas de usuario** con email y contraseña.
 - **Instalable** en el celular o la compu (PWA).
@@ -117,4 +118,5 @@ client/src/
 - **Plazo fijo**: tasa de depósitos a 30 días, renovado cada mes (capitalización mensual).
 - **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%.
 - **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias.
+- **Splits**: una operación anterior a un split se multiplica en cantidad y se divide en precio por el factor del split; el monto total no cambia.
 - **CCL implícito**: precio del CEDEAR × ratio ÷ precio en EE.UU. Si el ratio observado se aleja más de 10% del de la tabla (por ejemplo, tras un split), no se muestra.

@@ -5,6 +5,7 @@ import { api, type ImportResult } from '../api';
 import { DATA_KEYS } from '../hooks';
 import { date, money, num } from '../format';
 import { Button, ErrorBox } from '../components/ui';
+import { xlsxToCsv } from '../xlsx';
 
 /** Lee el archivo como UTF-8; si trae caracteres rotos (Excel en Windows), prueba Windows-1252. */
 async function readText(file: File): Promise<string> {
@@ -17,6 +18,7 @@ const STATUS = {
   ok: { label: 'Se importa', cls: 'text-up' },
   duplicada: { label: 'Ya estaba cargada', cls: 'text-muted' },
   error: { label: 'Con error', cls: 'text-down' },
+  ignorada: { label: 'Se ignora', cls: 'text-muted' },
 };
 
 export function ImportPage() {
@@ -40,7 +42,16 @@ export function ImportPage() {
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
-    const text = await readText(file);
+    let text: string;
+    try {
+      text = /\.xlsx$/i.test(file.name) ? await xlsxToCsv(await file.arrayBuffer()) : await readText(file);
+    } catch (err) {
+      check.reset();
+      setPreview(null);
+      setFileName(file.name);
+      window.alert(err instanceof Error ? err.message : 'No se pudo leer el archivo');
+      return;
+    }
     setFileName(file.name);
     setCsv(text);
     setPreview(null);
@@ -52,7 +63,7 @@ export function ImportPage() {
       <div>
         <h1 className="text-xl font-semibold">Importar operaciones</h1>
         <p className="mt-1 text-sm text-muted">
-          Subí un archivo CSV exportado de tu broker o de Excel. Reconocemos columnas como <b>Fecha</b>, <b>Tipo/Operación</b>,{' '}
+          Subí el Excel (.xlsx) o CSV que exporta tu broker. Bull Market: descargá la <b>Cuenta Corriente</b> y subila tal cual. Reconocemos columnas como <b>Fecha</b>, <b>Tipo/Operación</b>,{' '}
           <b>Ticker/Especie</b>, <b>Cantidad</b>, <b>Precio</b> y <b>Comisión</b>, con números en formato argentino (1.234,56) o con punto.
         </p>
       </div>
@@ -65,9 +76,9 @@ export function ImportPage() {
             onFile(e.dataTransfer.files?.[0]);
           }}
           className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line px-4 py-8 text-center transition hover:border-muted">
-          <span className="text-sm">{fileName || 'Elegí un archivo .csv'}</span>
+          <span className="text-sm">{fileName || 'Elegí un archivo .xlsx o .csv'}</span>
           <span className="text-xs text-muted">o arrastralo acá</span>
-          <input type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+          <input type="file" accept=".xlsx,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
         </label>
         <div className="flex flex-col gap-2 text-sm">
           <a href="/api/import/template" className="text-link hover:underline">
@@ -94,6 +105,11 @@ export function ImportPage() {
             <span>
               <b className="text-down">{preview.summary.errors}</b> con errores
             </span>
+            {preview.summary.ignored > 0 && (
+              <span title="Depósitos, retiros y otros movimientos que no son compras ni ventas">
+                <b className="text-muted">{preview.summary.ignored}</b> movimientos de plata
+              </span>
+            )}
             <Button variant="primary" className="ml-auto" disabled={!preview.summary.ok || commit.isPending} onClick={() => commit.mutate()}>
               {commit.isPending ? 'Importando…' : `Importar ${preview.summary.ok} operaciones`}
             </Button>
@@ -123,6 +139,7 @@ export function ImportPage() {
                     <td className={`px-4 py-2 ${STATUS[r.status].cls}`}>
                       {STATUS[r.status].label}
                       {r.errors.length > 0 && <span className="block text-xs">{r.errors.join(' · ')}</span>}
+                      {r.ignored && <span className="block text-xs">{r.ignored}</span>}
                     </td>
                   </tr>
                 ))}

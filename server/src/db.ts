@@ -122,6 +122,15 @@ const migrations: string[] = [
     seen         INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // v3: cambios de ratio / splits. factor = cuántas unidades nuevas por cada vieja (3:1 → 3).
+  `
+  CREATE TABLE split_events (
+    ticker TEXT NOT NULL REFERENCES assets(ticker) ON DELETE CASCADE,
+    date   TEXT NOT NULL,
+    factor REAL NOT NULL CHECK (factor > 0),
+    PRIMARY KEY (ticker, date)
+  );
+  `,
 ];
 
 function migrate() {

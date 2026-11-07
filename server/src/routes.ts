@@ -8,6 +8,8 @@ import {
   buildOperationDetail,
   buildPortfolio,
   getOperations,
+  getRawOperations,
+  adjustForSplits,
   parseCurrency,
   parseFxKind,
   requireUserAsset,
@@ -217,7 +219,7 @@ router.post('/assets/:ticker/operations', (req, res) => {
     note_body: cleanText(b.note_body, 5000),
     note_link: link,
   };
-  assertNoShortSelling([...getOperations(uid, ticker), { ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }]);
+  assertNoShortSelling([...getOperations(uid, ticker), ...adjustForSplits([{ ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }])]);
   res.status(201).json({ id: insertOperation(draft) });
 });
 
@@ -284,11 +286,11 @@ router.post('/import', async (req, res) => {
 
   const parsed = parseCsv(text);
   if (parsed.error) throw new HttpError(400, parsed.error);
-  const rows = parsed.rows.map((r) => ({ ...r, ticker: r.ticker ? normalizeTicker(r.ticker) : null, status: 'ok' as 'ok' | 'error' | 'duplicada' }));
+  const rows = parsed.rows.map((r) => ({ ...r, ticker: r.ticker ? normalizeTicker(r.ticker) : null, status: (r.ignored ? 'ignorada' : 'ok') as 'ok' | 'error' | 'duplicada' | 'ignorada' }));
   if (rows.length > 2000) throw new HttpError(400, 'Máximo 2000 operaciones por archivo');
 
   // Verificar que cada ticker exista en BYMA (se agrega al catálogo global si hace falta)
-  const tickers = [...new Set(rows.filter((r) => r.ticker && !r.errors.length).map((r) => r.ticker as string))];
+  const tickers = [...new Set(rows.filter((r) => r.ticker && !r.errors.length && !r.ignored).map((r) => r.ticker as string))];
   const unknown = new Set<string>();
   for (const t of tickers) {
     try {
@@ -300,15 +302,18 @@ router.post('/import', async (req, res) => {
 
   const today = arDate();
   for (const r of rows) {
-    if (r.ticker && unknown.has(r.ticker)) r.errors.push(`no encontramos ${r.ticker} en BYMA`);
+    if (r.ticker && unknown.has(r.ticker)) {
+      r.errors.push(`no encontramos ${r.ticker} en BYMA (por ahora la app maneja acciones y CEDEARs; bonos y fondos todavía no)`);
+    }
     if (r.date && r.date > today) r.errors.push('fecha futura');
   }
 
   // Duplicados: misma operación ya cargada
   const existingByTicker = new Map<string, OperationRow[]>();
-  for (const t of tickers) existingByTicker.set(t, getOperations(uid, t));
+  // Se compara contra lo cargado tal cual (sin ajustar por splits), igual que viene en el archivo
+  for (const t of tickers) existingByTicker.set(t, getRawOperations(uid, t));
   for (const r of rows) {
-    if (r.errors.length || !r.ticker) continue;
+    if (r.errors.length || !r.ticker || r.ignored) continue;
     const dup = existingByTicker
       .get(r.ticker)
       ?.some((o) => o.type === r.type && o.date === r.date && Math.abs(o.quantity - r.quantity!) < 1e-9 && Math.abs(o.price - r.price!) < 1e-6);
@@ -333,7 +338,7 @@ router.post('/import', async (req, res) => {
       created_at: '',
     }));
     try {
-      assertNoShortSelling([...(existingByTicker.get(t) ?? []), ...drafts], t);
+      assertNoShortSelling(adjustForSplits([...(existingByTicker.get(t) ?? []), ...drafts]), t);
     } catch (err) {
       // Se marcan solo las ventas: las compras de ese ticker se pueden importar igual
       for (const r of newOps) if (r.type === 'VENTA') r.errors.push(err instanceof Error ? err.message : 'ventas sin respaldo');
@@ -373,6 +378,7 @@ router.post('/import', async (req, res) => {
       total: rows.length,
       ok: valid.length,
       errors: rows.filter((r) => r.status === 'error').length,
+      ignored: rows.filter((r) => r.status === 'ignorada').length,
       duplicates: rows.filter((r) => r.status === 'duplicada').length,
     },
   });

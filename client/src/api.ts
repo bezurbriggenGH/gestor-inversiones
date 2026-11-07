@@ -80,6 +80,8 @@ export interface Operation {
   feesConv: number;
   totalConv: number;
   realized: number | null;
+  /** Si hubo un split después: por cuánto se multiplicó la cantidad (1 = sin cambios). */
+  splitFactor?: number;
 }
 
 export interface PricePoint {
@@ -235,9 +237,10 @@ export interface ImportResult {
     fees: number;
     note: string | null;
     errors: string[];
-    status: 'ok' | 'error' | 'duplicada';
+    ignored: string | null;
+    status: 'ok' | 'error' | 'duplicada' | 'ignorada';
   }[];
-  summary: { total: number; ok: number; errors: number; duplicates: number };
+  summary: { total: number; ok: number; errors: number; duplicates: number; ignored: number };
 }
 
 export type SimAlternative = 'activo' | 'dolar' | 'plazofijo' | 'inflacion' | 'colchon';

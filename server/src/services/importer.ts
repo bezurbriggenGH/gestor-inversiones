@@ -3,7 +3,11 @@
 // Reconoce columnas por nombre aunque varíen entre brokers: "Fecha", "Fecha Concertación",
 // "Especie", "Símbolo", "Ticker", "Cantidad", "Nominales", "Precio", "Comisión", "Arancel"…
 // Acepta números con formato argentino (1.234,56) o internacional (1234.56)
-// y fechas dd/mm/aaaa o aaaa-mm-dd.
+// y fechas dd/mm/aaaa, aaaa-mm-dd o números de fecha de Excel (45973).
+//
+// Formato Bull Market ("Cuenta Corriente"): columnas Liquida, Operado, Comprobante,
+// Cantidad (negativa en ventas), Especie, Precio (ya incluye gastos) e Importe.
+// Las filas de plata (Recibo de cobro, Orden de pago) se ignoran.
 import type { OpType } from './portfolio.ts';
 
 export interface ParsedRow {
@@ -16,16 +20,20 @@ export interface ParsedRow {
   fees: number;
   note: string | null;
   errors: string[];
+  /** Si la fila no es una operación (por ejemplo, un depósito), por qué se ignora. */
+  ignored: string | null;
 }
 
+// En orden de preferencia: si hay fecha de operación y de liquidación, gana la de operación
 const COLUMNS: Record<string, string[]> = {
-  date: ['fecha', 'fecha concertacion', 'fecha operacion', 'fecha liquidacion', 'date'],
-  type: ['tipo', 'operacion', 'tipo operacion', 'tipo de operacion', 'movimiento', 'type', 'side'],
+  date: ['fecha concertacion', 'concertacion', 'operado', 'fecha operado', 'fecha operacion', 'fecha', 'date', 'fecha liquidacion', 'liquida', 'liquidacion'],
+  type: ['tipo', 'operacion', 'tipo operacion', 'tipo de operacion', 'comprobante', 'tipo de comprobante', 'movimiento', 'type', 'side'],
   ticker: ['ticker', 'especie', 'simbolo', 'activo', 'instrumento', 'symbol', 'codigo'],
   quantity: ['cantidad', 'nominales', 'cant', 'cantidad nominal', 'quantity', 'qty'],
   price: ['precio', 'precio unitario', 'cotizacion', 'precio promedio', 'price'],
   fees: ['comision', 'comisiones', 'arancel', 'aranceles', 'gastos', 'derechos', 'fees', 'iva comision'],
   note: ['nota', 'notas', 'justificacion', 'comentario', 'observaciones', 'note'],
+  amount: ['importe', 'monto', 'importe neto', 'neto', 'total', 'amount'],
 };
 
 const normalize = (s: string) =>
@@ -77,7 +85,13 @@ export function parseNumber(raw: string | undefined): number | null {
 
 export function parseDate(raw: string | undefined): string | null {
   if (!raw) return null;
-  const s = raw.trim().slice(0, 10);
+  const t = raw.trim();
+  // Excel guarda las fechas como días desde el 30/12/1899 (45973 = 12/11/2025)
+  if (/^\d{5}(\.0+)?$/.test(t)) {
+    const n = Number(t);
+    if (n > 30000 && n < 80000) return new Date(Date.UTC(1899, 11, 30) + n * 86_400_000).toISOString().slice(0, 10);
+  }
+  const s = t.slice(0, 10);
   let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
   m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
@@ -107,8 +121,8 @@ export function parseCsv(text: string): { rows: ParsedRow[]; columns: Record<str
   const index: Record<string, number> = {};
   const columns: Record<string, string | null> = {};
   for (const [key, names] of Object.entries(COLUMNS)) {
-    const i = headers.findIndex((h) => names.includes(h));
-    const j = i >= 0 ? i : headers.findIndex((h) => names.some((n) => h.startsWith(n)));
+    const exact = names.map((n) => headers.indexOf(n)).find((i) => i >= 0) ?? -1;
+    const j = exact >= 0 ? exact : headers.findIndex((h) => names.some((n) => h.startsWith(n)));
     index[key] = j;
     columns[key] = j >= 0 ? splitLine(header, sep)[j] : null;
   }
@@ -122,23 +136,50 @@ export function parseCsv(text: string): { rows: ParsedRow[]; columns: Record<str
     const cells = splitLine(line, sep);
     const cell = (k: string) => (index[k] >= 0 ? cells[index[k]] : undefined);
     const errors: string[] = [];
+    const base = { line: i + 2, fees: 0, note: null, errors, ignored: null };
+
+    const type = parseType(cell('type'));
+    const tickerCell = (cell('ticker') ?? '').trim();
+    const amount = parseNumber(cell('amount'));
+
+    // Movimientos de plata: no tienen especie ni son compra, venta o dividendo
+    if (!type && !tickerCell) {
+      const what = cell('type') || 'Movimiento';
+      return { ...base, date: parseDate(cell('date')), type: null, ticker: null, quantity: null, price: null, ignored: `${what}: entrada o salida de plata, no es una operación` };
+    }
+
+    // Dividendos que el broker informa solo como un monto total
+    let qCell = parseNumber(cell('quantity'));
+    let pCell = parseNumber(cell('price'));
+    if (type === 'DIVIDENDO' && !qCell) {
+      if (!amount || amount <= 0) {
+        return {
+          ...base,
+          date: parseDate(cell('date')),
+          type,
+          ticker: tickerCell.toUpperCase() || null,
+          quantity: null,
+          price: null,
+          ignored: 'Gasto o retención cobrada sobre un dividendo',
+        };
+      }
+      qCell = 1;
+      pCell = amount;
+    }
 
     const date = parseDate(cell('date'));
     if (!date) errors.push('fecha inválida');
-    const type = parseType(cell('type'));
     if (!type) errors.push('tipo desconocido (usá Compra, Venta o Dividendo)');
-    const tickerRaw = (cell('ticker') ?? '').toUpperCase().replace(/\.BA$/, '').trim();
+    const tickerRaw = tickerCell.toUpperCase().replace(/\.BA$/, '').trim();
     const ticker = /^[A-Z0-9]{1,10}$/.test(tickerRaw) ? tickerRaw : null;
     if (!ticker) errors.push('ticker inválido');
-    const q = parseNumber(cell('quantity'));
-    const quantity = q != null ? Math.abs(q) : null;
+    const quantity = qCell != null ? Math.abs(qCell) : null;
     if (!quantity) errors.push('cantidad inválida');
-    const p = parseNumber(cell('price'));
-    const price = p != null ? Math.abs(p) : null;
+    const price = pCell != null ? Math.abs(pCell) : null;
     if (!price) errors.push('precio inválido');
     const fees = Math.abs(parseNumber(cell('fees')) ?? 0);
 
-    return { line: i + 2, date, type, ticker, quantity, price, fees, note: cell('note')?.trim() || null, errors };
+    return { ...base, date, type, ticker, quantity, price, fees, note: cell('note')?.trim() || null };
   });
 
   return { rows, columns };

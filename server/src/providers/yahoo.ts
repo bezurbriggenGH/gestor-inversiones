@@ -15,12 +15,18 @@ export interface Dividend {
   amount: number; // por acción, en la moneda del instrumento
 }
 
+export interface Split {
+  date: string;
+  factor: number; // 3:1 → 3 (cada unidad pasa a ser 3)
+}
+
 export interface YahooChart {
   symbol: string;
   name: string;
   currency: string;
   bars: Bar[];
   dividends: Dividend[];
+  splits: Split[];
 }
 
 export class YahooNotFound extends Error {}
@@ -74,11 +80,16 @@ export async function fetchChart(
     .filter((d) => d.amount > 0)
     .map((d) => ({ date: toDate(d.date), amount: d.amount }));
 
+  const splits = Object.values((result.events?.splits ?? {}) as Record<string, { date: number; numerator: number; denominator: number }>)
+    .filter((s) => s.numerator > 0 && s.denominator > 0 && s.numerator !== s.denominator)
+    .map((s) => ({ date: toDate(s.date), factor: s.numerator / s.denominator }));
+
   return {
     symbol,
     name: meta.longName ?? meta.shortName ?? symbol,
     currency: meta.currency ?? 'ARS',
     bars: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     dividends,
+    splits,
   };
 }

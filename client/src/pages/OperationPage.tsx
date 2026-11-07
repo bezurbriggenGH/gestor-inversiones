@@ -71,6 +71,13 @@ export function OperationPage() {
         {currency === 'USD' && <Row label="Precio cargado (ARS)">{money(op.price, 'ARS')}</Row>}
       </section>
 
+      {op.splitFactor && op.splitFactor !== 1 && (
+        <p className="rounded-lg bg-panel px-4 py-3 text-sm text-muted">
+          Ajustada por un cambio de ratio posterior (×{op.splitFactor}): la cargaste como {num(op.quantity / op.splitFactor)} a{' '}
+          {money(op.price * op.splitFactor, 'ARS')}. El monto total no cambia.
+        </p>
+      )}
+
       {entry && (
         <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
           <div className="flex items-center justify-between gap-2">

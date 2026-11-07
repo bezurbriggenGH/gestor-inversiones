@@ -2,7 +2,7 @@
 // desde la última fecha guardada hasta hoy, así que si nadie abre la app por una
 // semana, la próxima vez se completan los días que faltan en una sola consulta.
 import { db, all, get, run, tx } from '../db.ts';
-import { fetchChart, type Bar, type Dividend } from '../providers/yahoo.ts';
+import { fetchChart, type Bar, type Dividend, type Split } from '../providers/yahoo.ts';
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
 import { fetchDepositRate, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
@@ -32,7 +32,7 @@ function markSynced(key: string) {
   run('INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value', key, Date.now());
 }
 
-export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = []): void {
+export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = [], splits: Split[] = []): void {
   const priceStmt = db.prepare(`
     INSERT INTO prices (ticker, date, open, high, low, close, volume)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -43,9 +43,13 @@ export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = []
   const divStmt = db.prepare(
     'INSERT INTO dividend_events (ticker, date, amount) VALUES (?, ?, ?) ON CONFLICT (ticker, date) DO UPDATE SET amount = excluded.amount',
   );
+  const splitStmt = db.prepare(
+    'INSERT INTO split_events (ticker, date, factor) VALUES (?, ?, ?) ON CONFLICT (ticker, date) DO UPDATE SET factor = excluded.factor',
+  );
   tx(() => {
     for (const b of bars) priceStmt.run(ticker, b.date, b.open, b.high, b.low, b.close, b.volume);
     for (const d of dividends) divStmt.run(ticker, d.date, d.amount);
+    for (const s of splits) splitStmt.run(ticker, s.date, s.factor);
   });
 }
 
@@ -78,9 +82,22 @@ export function syncAsset(ticker: string, force = false): Promise<void> {
     if (!force && asset.last_sync && Date.now() - asset.last_sync < PRICE_TTL_MS) return;
 
     const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM prices WHERE ticker = ?', ticker)?.d;
+    // Los activos guardados antes de registrar splits se descargan completos una vez
+    const splitsKey = `splits:${ticker}`;
+    let full = !last || !get('SELECT 1 FROM sync_state WHERE key = ?', splitsKey);
     // Pedimos una semana de margen para corregir cierres que Yahoo haya ajustado
-    const chart = await fetchChart(asset.symbol, last ? { from: addDays(last, -7) } : { range: '10y' });
-    saveBars(ticker, chart.bars, chart.dividends);
+    let chart = await fetchChart(asset.symbol, full ? { range: '10y' } : { from: addDays(last!, -7) });
+    const isNew = (s: Split) => !get('SELECT 1 FROM split_events WHERE ticker = ? AND date = ?', ticker, s.date);
+    if (!full && chart.splits.some(isNew)) {
+      // Split nuevo: Yahoo ajustó todo el historial, así que se vuelve a bajar completo
+      chart = await fetchChart(asset.symbol, { range: '10y' });
+      full = true;
+    }
+    const stored = get<{ n: number }>('SELECT COUNT(*) AS n FROM prices WHERE ticker = ?', ticker)?.n ?? 0;
+    // Solo se reemplaza el historial si Yahoo devolvió uno completo (a veces devuelve solo el día de hoy)
+    if (full && chart.bars.length >= stored * 0.9) run('DELETE FROM prices WHERE ticker = ?', ticker);
+    saveBars(ticker, chart.bars, chart.dividends, chart.splits);
+    if (!full || chart.bars.length >= stored * 0.9) markSynced(splitsKey);
     run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
     checkAlerts(ticker);
     await syncUnderlying(ticker);
@@ -150,6 +167,7 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
   const chart = await fetchChart(symbol, { range: '10y' });
   if (chart.bars.length === 0) throw new Error(`${ticker} no tiene precios`);
   run('INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES (?, ?, ?, ?, ?)', ticker, symbol, chart.name, type, Date.now());
-  saveBars(ticker, chart.bars, chart.dividends);
+  saveBars(ticker, chart.bars, chart.dividends, chart.splits);
+  markSynced(`splits:${ticker}`);
   if (type === 'CEDEAR') await syncUnderlying(ticker);
 }

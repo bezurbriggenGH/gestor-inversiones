@@ -38,6 +38,8 @@ export interface OperationRow {
   note_body: string | null;
   note_link: string | null;
   created_at: string;
+  /** Si hubo un split después de la operación: por cuánto se multiplicó la cantidad (1 = sin cambios). */
+  splitFactor?: number;
 }
 
 interface PriceRow {
@@ -115,6 +117,12 @@ export function assertNoShortSelling(ops: OperationRow[], ticker = ''): void {
     if (op.type === 'COMPRA') qty += op.quantity;
     else if (op.type === 'VENTA') {
       if (op.quantity > qty + 1e-9) {
+        if (qty < 1e-9) {
+          throw new HttpError(
+            409,
+            `${ticker ? ticker + ': h' : 'H'}ay una venta el ${op.date.split('-').reverse().join('/')} pero no hay compras anteriores cargadas. Cargá primero la compra.`,
+          );
+        }
         throw new HttpError(
           409,
           `${ticker ? ticker + ': e' : 'E'}l ${op.date.split('-').reverse().join('/')} se venderían ${op.quantity} unidades, pero en ese momento había ${qty}.`,
@@ -237,10 +245,33 @@ export function requireUserAsset(userId: number, ticker: string): AssetRow {
   return asset;
 }
 
-export function getOperations(userId: number, ticker?: string): OperationRow[] {
+/** Operaciones tal como se cargaron (sin ajustar por splits). */
+export function getRawOperations(userId: number, ticker?: string): OperationRow[] {
   return ticker
     ? all<OperationRow>('SELECT * FROM operations WHERE user_id = ? AND ticker = ?', userId, ticker)
     : all<OperationRow>('SELECT * FROM operations WHERE user_id = ?', userId);
+}
+
+/**
+ * Ajusta operaciones anteriores a un split o cambio de ratio.
+ * Los precios históricos de Yahoo vienen ajustados, así que las operaciones también:
+ * si SPY pasó de ratio 20 a 60 (3:1), 10 CEDEARs a $47.010 pasan a ser 30 a $15.670.
+ * El monto total no cambia, y el resultado tampoco.
+ */
+export function adjustForSplits<T extends Pick<OperationRow, 'ticker' | 'date' | 'quantity' | 'price'>>(ops: T[]): (T & { splitFactor: number })[] {
+  const splits = new Map<string, { date: string; factor: number }[]>();
+  for (const t of new Set(ops.map((o) => o.ticker))) {
+    splits.set(t, all<{ date: string; factor: number }>('SELECT date, factor FROM split_events WHERE ticker = ?', t));
+  }
+  return ops.map((op) => {
+    // El split rige desde su fecha: lo operado antes queda en la escala vieja
+    const factor = (splits.get(op.ticker) ?? []).filter((s) => op.date < s.date).reduce((f, s) => f * s.factor, 1);
+    return factor === 1 ? { ...op, splitFactor: 1 } : { ...op, quantity: op.quantity * factor, price: op.price / factor, splitFactor: factor };
+  });
+}
+
+export function getOperations(userId: number, ticker?: string): OperationRow[] {
+  return adjustForSplits(getRawOperations(userId, ticker));
 }
 
 function lastTwoPrices(ticker: string): [PriceRow | undefined, PriceRow | undefined] {
@@ -370,8 +401,9 @@ export function buildAssetDetail(userId: number, ticker: string, currency: Curre
 }
 
 export function buildOperationDetail(userId: number, id: number, currency: Currency, kind: FxKind) {
-  const op = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, userId);
-  if (!op) throw new HttpError(404, 'Operación no encontrada');
+  const raw = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, userId);
+  if (!raw) throw new HttpError(404, 'Operación no encontrada');
+  const op = adjustForSplits([raw])[0];
   const asset = requireUserAsset(userId, op.ticker);
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx);
