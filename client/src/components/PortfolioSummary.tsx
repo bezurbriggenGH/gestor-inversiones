@@ -5,6 +5,8 @@ import { FX_LABEL, date, money, pct, tone } from '../format';
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const CONCENTRATION_LIMIT = 0.35;
+/** Cada dato del panel de arriba va en su propio recuadro, más oscuro que el panel */
+const CARD = 'flex flex-col gap-1 rounded-lg border border-line/60 bg-bg/70 p-5';
 
 function Line({ label, value, cls = '' }: { label: string; value: string; cls?: string }) {
   return (
@@ -21,28 +23,49 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
   const s = data.summary;
   const real = data.realReturn;
   const irr = history?.portfolio?.irr ?? null;
+  // El mismo valor en la otra moneda, con el dólar de hoy
+  const other =
+    data.fx && data.fx.rate > 0
+      ? currency === 'ARS'
+        ? money(s.marketValue / data.fx.rate, 'USD')
+        : money(s.marketValue * data.fx.rate, 'ARS')
+      : null;
 
   return (
-    <section className="grid gap-6 rounded-xl bg-panel p-6 lg:grid-cols-3">
-      <div className="flex flex-col gap-1">
+    <section className="grid gap-3 rounded-xl bg-panel p-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className={CARD}>
         <span className="text-sm text-muted">Tu cartera vale</span>
         <span className="tabular text-3xl font-semibold">{money(s.marketValue, currency)}</span>
-        <span className={`tabular text-sm ${tone(s.dayChange)}`}>
+        {other && (
+          <span className="tabular text-sm text-muted">
+            ≈ {other} ({FX_LABEL[data.fxKind]})
+          </span>
+        )}
+        <span className={`tabular mt-1 text-sm ${tone(s.dayChange)}`}>
           {money(s.dayChange, currency, true)} ({pct(s.dayChangePct)}) hoy
         </span>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className={CARD}>
         <span className="text-sm text-muted">Ganaste en total</span>
         <span className={`tabular text-3xl font-semibold ${tone(s.totalGain)}`}>{money(s.totalGain, currency, true)}</span>
-        <div className="mt-1 flex flex-col gap-0.5">
+        {s.peakCapital > 0 && (
+          <span
+            className="tabular text-sm text-muted"
+            title="Lo máximo que llegaste a tener invertido de tu bolsillo: compras menos lo que ya recuperaste con ventas y dividendos"
+          >
+            <span className={`font-medium ${tone(s.totalGainPct)}`}>{pct(s.totalGainPct)}</span> sobre{' '}
+            {money(s.peakCapital, currency)} que llegaste a tener puesto
+          </span>
+        )}
+        <div className="mt-2 flex flex-col gap-0.5 border-t border-line pt-2">
           <Line label="En lo que tenés hoy" value={money(s.unrealized, currency, true)} cls={tone(s.unrealized)} />
           {s.realized !== 0 && <Line label="En ventas ya hechas" value={money(s.realized, currency, true)} cls={tone(s.realized)} />}
           {s.dividends !== 0 && <Line label="En dividendos" value={money(s.dividends, currency, true)} cls={tone(s.dividends)} />}
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className={`${CARD} md:col-span-2 xl:col-span-1`}>
         <span className="text-sm text-muted" title="Rendimiento anual considerando cuándo entró y salió cada peso">
           Rendimiento por año
         </span>
@@ -58,7 +81,7 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
       </div>
 
       {data.fx && (
-        <p className="text-xs text-muted lg:col-span-3">
+        <p className="px-2 pb-1 text-xs text-muted md:col-span-2 xl:col-span-3">
           Dólar {FX_LABEL[data.fxKind]}: {money(data.fx.rate, 'ARS')} ({date(data.fx.date)})
           {currency === 'USD' && ' · cada operación se convierte con el dólar del día en que se hizo'}
         </p>

@@ -14,6 +14,8 @@ export interface Position {
   avgCost: number;
   costBasis: number;
   invested: number;
+  /** Lo máximo que llegaste a tener puesto de tu bolsillo (base del % de ganancia total) */
+  peakCapital: number;
   price: number;
   priceDate: string | null;
   marketValue: number;
@@ -48,6 +50,7 @@ export interface Portfolio {
     marketValue: number;
     costBasis: number;
     invested: number;
+    peakCapital: number;
     unrealized: number;
     unrealizedPct: number;
     realized: number;
