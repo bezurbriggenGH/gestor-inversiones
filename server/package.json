@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "node --watch src/index.ts",
     "start": "node src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-reporter=spec \"test/*.test.ts\"",
+    "reset-password": "node src/reset-password.ts"
   },
   "dependencies": {
     "express": "^5.3.0"

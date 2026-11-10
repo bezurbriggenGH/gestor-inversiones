@@ -67,6 +67,38 @@ minutos, y una vez después del cierre para guardar el precio final. De noche y 
 no se consulta nada. Si la app estuvo apagada varios días, al prenderla se completan los días que
 falten.
 
+### Cambiar o recuperar la contraseña
+
+- **Si te acordás de la actual:** en la app, abajo del menú, **Cambiar contraseña**.
+- **Si te la olvidaste:** la app corre en tu compu y no manda emails, así que se cambia desde la
+  terminal, en la carpeta del proyecto. Te muestra las cuentas y te pide la contraseña nueva
+  (no se ve mientras la escribís):
+
+```bash
+npm run reset-password
+```
+
+En los dos casos se cierran las sesiones abiertas en otras compus o celulares.
+
+## Tests
+
+Los cálculos de la app se comprueban con tests automáticos: casos con un resultado conocido que se
+puede sacar a mano (por ejemplo, el acertijo de la vaca: comprar a 2.000, vender a 2.200,
+recomprar a 2.300 y vender a 2.500 tiene que dar una ganancia de 400). Para correrlos:
+
+```bash
+npm test
+```
+
+Cada archivo de tests usa una base de datos vacía y temporal, así que nunca tocan tus datos.
+
+| Archivo | Qué comprueba |
+|---|---|
+| `server/test/cartera.test.ts` | Precio promedio, ganancias, comisiones, dividendos, dólares, ventas de más |
+| `server/test/historia.test.ts` | TIR, rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
+| `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
+| `server/test/cuentas.test.ts` | Registro, ingreso, cambio y recuperación de contraseña |
+
 ## Tecnologías
 
 | Parte | Tecnología |

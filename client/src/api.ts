@@ -295,6 +295,7 @@ export const api = {
   login: (email: string, password: string) => post<User>('/auth/login', { email, password }),
   register: (name: string, email: string, password: string) => post<User>('/auth/register', { name, email, password }),
   logout: () => post<void>('/auth/logout'),
+  changePassword: (current: string, next: string) => post<void>('/auth/password', { current, next }),
 
   portfolio: (c: Currency, k: FxKind) => request<Portfolio>(`/portfolio?${q(c, k)}`),
   history: (c: Currency, k: FxKind) => request<History>(`/history?${q(c, k)}`),

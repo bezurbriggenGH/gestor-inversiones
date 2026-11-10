@@ -1,0 +1,147 @@
+// Evolución de la cartera: TIR, rendimiento mes a mes, plazo fijo, splits y
+// que las distintas pantallas den los mismos números.
+import { close, near, op, pesos } from './helpers.ts';
+import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { run } from '../src/db.ts';
+import { buildHistory, monthlyReturns, plazoFijoIndex, xirr } from '../src/services/history.ts';
+import { adjustForSplits, buildPortfolio, computePosition } from '../src/services/portfolio.ts';
+
+describe('TIR (rendimiento por año)', () => {
+  test('pongo $1.000 y al año recibo $1.100 → 10% anual', () => {
+    const r = xirr([
+      { date: '2023-01-01', amount: -1000 },
+      { date: '2024-01-01', amount: 1100 },
+    ]);
+    assert.ok(near(r, 0.1));
+  });
+
+  test('ganar 21% en dos años es 10% por año, no 10,5%', () => {
+    const r = xirr([
+      { date: '2023-01-01', amount: -1000 },
+      { date: '2025-01-01', amount: 1210 },
+    ]);
+    assert.ok(near(r, 0.1, 1e-3));
+  });
+
+  test('con menos de un mes no se calcula (no es representativo)', () => {
+    assert.equal(xirr([{ date: '2024-01-01', amount: -1000 }, { date: '2024-01-15', amount: 1100 }]), null);
+  });
+});
+
+describe('Rendimiento mes a mes', () => {
+  test('una compra grande sobre una cartera chica no exagera la caída', () => {
+    // Día 1: compro $10.000. Día 2: compro $40.000 más y todo baja 4% → la cartera vale $48.000.
+    // El rendimiento del día es −4%. (Antes daba −20%: la caída de la compra nueva
+    // se dividía solo por los $10.000 que ya había.)
+    const [m] = monthlyReturns([
+      { date: '2024-02-15', value: 10_000, netInvested: 10_000 },
+      { date: '2024-02-16', value: 48_000, netInvested: 50_000 },
+    ]);
+    assert.ok(near(m.return, -0.04));
+    assert.ok(near(m.gain, -2000));
+  });
+
+  test('una venta no cuenta como pérdida', () => {
+    // Tengo $10.000, sube 10% y vendo la mitad: me quedan $5.500 y cobré $5.500
+    const [m] = monthlyReturns([
+      { date: '2024-03-01', value: 10_000, netInvested: 10_000 },
+      { date: '2024-03-04', value: 5_500, netInvested: 4_500 },
+    ]);
+    assert.ok(near(m.return, 0.1));
+    assert.ok(near(m.gain, 1000));
+  });
+
+  test('cada mes se mide por separado', () => {
+    const months = monthlyReturns([
+      { date: '2024-01-31', value: 1000, netInvested: 1000 },
+      { date: '2024-02-29', value: 1100, netInvested: 1000 }, // +10% en febrero
+      { date: '2024-03-29', value: 990, netInvested: 1000 }, // −10% en marzo
+    ]);
+    assert.deepEqual(
+      months.map((m) => m.month),
+      ['2024-01', '2024-02', '2024-03'],
+    );
+    assert.ok(near(months[1].return, 0.1));
+    assert.ok(near(months[2].return, -0.1));
+  });
+});
+
+describe('Plazo fijo', () => {
+  test('con una tasa de 36,5% anual, en 30 días se gana 3%', () => {
+    for (let d = 1; d <= 31; d++) {
+      run("INSERT INTO index_values (series, date, value) VALUES ('plazofijo', ?, 0.365)", `2024-01-${String(d).padStart(2, '0')}`);
+    }
+    const idx = plazoFijoIndex('2024-01-01', '2024-01-31');
+    assert.ok(near(idx.at('2024-01-31') / idx.at('2024-01-01'), 1.03, 1e-9));
+  });
+});
+
+describe('Splits y cambios de ratio', () => {
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SPLT', 'SPLT.BA', 'Prueba split', 'CEDEAR')");
+  run("INSERT INTO split_events (ticker, date, factor) VALUES ('SPLT', '2024-06-01', 3)");
+
+  test('las operaciones anteriores al split se ajustan: 10 a $300 pasan a ser 30 a $100', () => {
+    const [antes, despues] = adjustForSplits([
+      op('COMPRA', '2024-01-01', 10, 300, 0, 'SPLT'),
+      op('COMPRA', '2024-07-01', 5, 110, 0, 'SPLT'),
+    ]);
+    assert.equal(antes.quantity, 30);
+    assert.equal(antes.price, 100);
+    assert.equal(despues.quantity, 5); // la posterior no cambia
+  });
+
+  test('el split no cambia la ganancia', () => {
+    // Compré 10 a $300 (= $3.000). Hoy, después del split 3:1, cada una vale $120: 30 × $120 = $3.600
+    const ops = adjustForSplits([op('COMPRA', '2024-01-01', 10, 300, 0, 'SPLT')]);
+    const p = computePosition(ops, close('2024-07-01', 120), undefined, pesos).position;
+    assert.equal(p.quantity, 30);
+    assert.equal(p.costBasis, 3000);
+    assert.equal(p.unrealized, 600); // igual que 10 × ($360 − $300) sin el split
+  });
+});
+
+describe('Las pantallas cuentan lo mismo', () => {
+  // Una cartera de prueba completa: un activo, sus precios, el dólar y tres operaciones
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (1, 'Prueba', 'prueba@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('AAA', 'AAA.BA', 'Prueba', 'ACCION')");
+  run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'AAA')");
+  const prices: [string, number, number][] = [
+    // fecha, precio, dólar
+    ['2025-01-02', 1000, 1100],
+    ['2025-02-03', 1200, 1150],
+    ['2025-03-03', 1100, 1200],
+    ['2025-04-01', 1500, 1250],
+  ];
+  for (const [date, px, usd] of prices) {
+    run("INSERT INTO prices (ticker, date, close) VALUES ('AAA', ?, ?)", date, px);
+    run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, ?)", date, usd);
+  }
+  const insert = (type: string, date: string, qty: number, price: number) =>
+    run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (1, 'AAA', ?, ?, ?, ?)", type, date, qty, price);
+  insert('COMPRA', '2025-01-02', 10, 1000);
+  insert('VENTA', '2025-02-03', 4, 1200);
+  insert('COMPRA', '2025-03-03', 6, 1100);
+
+  test('el valor y la ganancia dan igual en la cartera y en la evolución', () => {
+    const p = buildPortfolio(1, 'ARS', 'bolsa').summary;
+    const h = buildHistory(1, 'ARS', 'bolsa').portfolio!;
+    assert.equal(p.marketValue, 12 * 1500);
+    assert.ok(near(p.marketValue, h.value));
+    // Ganancia total = valor de hoy − plata puesta neta
+    assert.ok(near(p.totalGain, h.value - h.netInvested));
+  });
+
+  test('en dólares, "haber comprado dólares" da exactamente la plata puesta y 0% por año', () => {
+    const h = buildHistory(1, 'USD', 'bolsa');
+    const dolar = h.benchmarks.find((b) => b.key === 'dolar')!;
+    assert.ok(near(dolar.value, h.portfolio!.netInvested));
+    assert.ok(near(dolar.irr, 0, 1e-6));
+  });
+
+  test('con dólar CCL la comparación dice "Dólar CCL"', () => {
+    run("INSERT INTO fx_rates (kind, date, sell) VALUES ('contadoconliqui', '2025-01-02', 1150)");
+    const h = buildHistory(1, 'ARS', 'contadoconliqui');
+    assert.equal(h.benchmarks.find((b) => b.key === 'dolar')!.label, 'Dólar CCL');
+  });
+});
