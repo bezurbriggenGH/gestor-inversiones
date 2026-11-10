@@ -96,6 +96,11 @@ export function OperationHistory({ operations, currency }: { operations: Operati
                           ✎
                         </span>
                       )}
+                      {op.imageCount ? (
+                        <span className="text-xs text-muted" title={`${op.imageCount} foto${op.imageCount > 1 ? 's' : ''}`}>
+                          📷{op.imageCount > 1 ? op.imageCount : ''}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="hidden text-muted sm:block">{date(op.date)}</span>
                     {/* En celular: arriba el tipo y el resultado; abajo, a todo lo ancho, fecha y cantidad × precio = total */}

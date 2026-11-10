@@ -3,7 +3,8 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const dataDir = process.env.DATA_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
+/** Carpeta de datos: la base y las fotos de las operaciones. */
+export const dataDir = process.env.DATA_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 mkdirSync(dataDir, { recursive: true });
 
 export const db = new DatabaseSync(join(dataDir, 'finanzas.db'));
@@ -130,6 +131,19 @@ const migrations: string[] = [
     factor REAL NOT NULL CHECK (factor > 0),
     PRIMARY KEY (ticker, date)
   );
+  `,
+  // v4: fotos de cada operación (capturas, gráficos, noticias). La imagen se guarda como
+  // archivo en data/fotos; acá queda solo el nombre del archivo y de quién es.
+  `
+  CREATE TABLE operation_images (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    operation_id INTEGER NOT NULL REFERENCES operations(id) ON DELETE CASCADE,
+    user_id      INTEGER NOT NULL,
+    file         TEXT NOT NULL,
+    mime         TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX operation_images_op ON operation_images (operation_id);
   `,
 ];
 

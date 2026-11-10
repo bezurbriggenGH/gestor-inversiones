@@ -85,6 +85,8 @@ export interface Operation {
   realized: number | null;
   /** En una venta: el resultado sobre lo que habían costado las acciones vendidas. */
   realizedPct: number | null;
+  /** Cuántas fotos tiene (solo viene en el historial de un activo). */
+  imageCount?: number;
   /** Si hubo un split después: por cuánto se multiplicó la cantidad (1 = sin cambios). */
   splitFactor?: number;
 }
@@ -141,7 +143,16 @@ export interface OperationDetail {
   fxKind: FxKind;
   asset: { ticker: string; name: string; type: AssetType };
   operation: Operation;
+  images: OperationImage[];
 }
+
+export interface OperationImage {
+  id: number;
+  created_at: string;
+}
+
+/** Dirección de una foto (la sirve el backend, solo a su dueño). */
+export const imageUrl = (id: number) => `/api/images/${id}`;
 
 export interface NewOperation {
   type: OperationType;
@@ -313,6 +324,9 @@ export const api = {
   deleteOperation: (id: number) => del(`/operations/${id}`),
   updateNote: (id: number, note: { note_title: string; note_body: string; note_link: string }) =>
     request<void>(`/operations/${id}/note`, { method: 'PUT', body: JSON.stringify(note) }),
+  addImage: (operationId: number, image: Blob) =>
+    request<{ id: number }>(`/operations/${operationId}/images`, { method: 'POST', body: image, headers: { 'Content-Type': image.type } }),
+  deleteImage: (id: number) => del(`/images/${id}`),
 
   simulate: (ticker: string, amount: number, date: string, c: Currency, k: FxKind) =>
     request<Simulation>(`/simulate?ticker=${encodeURIComponent(ticker)}&amount=${amount}&date=${date}&${q(c, k)}`),

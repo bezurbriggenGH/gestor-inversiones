@@ -7,6 +7,7 @@ import { useSettings } from '../settings';
 import { FX_LABEL, date, money, num, pct, tone } from '../format';
 import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict } from '../components/Verdict';
+import { OperationPhotos } from '../components/OperationPhotos';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -174,6 +175,9 @@ export function OperationPage() {
           <Note key={op.id} op={op} />
         </>
       )}
+
+      <hr className="border-line" />
+      <OperationPhotos operationId={op.id} images={data.images} />
 
       <ErrorBox error={remove.error} />
       <div>

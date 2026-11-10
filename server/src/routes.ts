@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
+import { MAX_IMAGE_BYTES, addImage, deleteImage, deleteImagesOf, imageCounts, imageFile, listImages } from './services/images.ts';
 import { get, run, tx, all } from './db.ts';
 import { YahooNotFound } from './providers/yahoo.ts';
 import { ensureAsset, syncAll, syncAsset, syncFx, syncIndices } from './services/sync.ts';
@@ -132,6 +133,7 @@ router.delete('/assets/:ticker', (req, res) => {
   const uid = userId(res);
   const ticker = requireUserAsset(uid, normalizeTicker(req.params.ticker)).ticker;
   tx(() => {
+    deleteImagesOf(getRawOperations(uid, ticker).map((o) => o.id));
     run('DELETE FROM operations WHERE user_id = ? AND ticker = ?', uid, ticker);
     run('DELETE FROM alerts WHERE user_id = ? AND ticker = ?', uid, ticker);
     run('DELETE FROM user_assets WHERE user_id = ? AND ticker = ?', uid, ticker);
@@ -143,7 +145,10 @@ router.get('/assets/:ticker', async (req, res) => {
   const ticker = requireUserAsset(userId(res), normalizeTicker(req.params.ticker)).ticker;
   await Promise.allSettled([syncAsset(ticker), syncFx()]);
   const { currency, fx } = q(req);
-  res.json(buildAssetDetail(userId(res), ticker, currency, fx));
+  const detail = buildAssetDetail(userId(res), ticker, currency, fx);
+  // Cuántas fotos tiene cada operación, para marcarlas en el historial
+  const counts = imageCounts(userId(res));
+  res.json({ ...detail, operations: detail.operations.map((o) => ({ ...o, imageCount: counts.get(o.id) ?? 0 })) });
 });
 
 /** Precio de cierre de una fecha (o el último anterior si fue feriado). Siempre en pesos. */
@@ -220,7 +225,29 @@ router.post('/assets/:ticker/operations', (req, res) => {
 
 router.get('/operations/:id', (req, res) => {
   const { currency, fx } = q(req);
-  res.json(buildOperationDetail(userId(res), Number(req.params.id), currency, fx));
+  const id = Number(req.params.id);
+  res.json({ ...buildOperationDetail(userId(res), id, currency, fx), images: listImages(userId(res), id) });
+});
+
+// ---------- Fotos de las operaciones ----------
+
+// La foto llega tal cual (no en JSON), con su tipo en Content-Type
+router.post('/operations/:id/images', express.raw({ type: 'image/*', limit: MAX_IMAGE_BYTES }), (req, res) => {
+  if (!Buffer.isBuffer(req.body)) throw new HttpError(415, 'El archivo no es una imagen (se aceptan JPG, PNG, GIF y WEBP)');
+  const id = addImage(userId(res), Number(req.params.id), req.body);
+  res.status(201).json({ id });
+});
+
+router.get('/images/:id', (req, res) => {
+  const { path, mime } = imageFile(userId(res), Number(req.params.id));
+  // Privada: el navegador la puede guardar, pero nadie más (las fotos no cambian nunca)
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.type(mime).sendFile(path);
+});
+
+router.delete('/images/:id', (req, res) => {
+  deleteImage(userId(res), Number(req.params.id));
+  res.status(204).end();
 });
 
 // Agregar o cambiar la justificación después (por ejemplo, en operaciones importadas del broker)
@@ -248,7 +275,10 @@ router.delete('/operations/:id', (req, res) => {
   } catch {
     throw new HttpError(409, 'No se puede borrar esta compra: quedarían ventas sin respaldo. Borrá primero esas ventas.');
   }
-  run('DELETE FROM operations WHERE id = ?', id);
+  tx(() => {
+    deleteImagesOf([id]);
+    run('DELETE FROM operations WHERE id = ?', id);
+  });
   res.status(204).end();
 });
 

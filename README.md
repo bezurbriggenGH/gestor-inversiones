@@ -18,7 +18,8 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
   simulando que la misma plata entró y salió en las mismas fechas.
 - **Rendimiento real**: cuánto ganaste descontando la inflación.
 - **Dividendos**: detecta los dividendos que pagaron tus activos y te sugiere registrarlos con la retención habitual.
-- **Diario de decisiones**: para cada compra y venta, qué hizo el precio 30, 90 y 180 días después, y tu porcentaje de aciertos.
+- **Diario de decisiones**: para cada compra y venta, qué hizo el precio (en dólares) 30, 90 y 180 días después, y tu porcentaje de aciertos.
+- **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias.
 - **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos.
@@ -85,6 +86,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/historia.test.ts` | TIR, rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta y que el Diario de decisiones juzgue en dólares |
+| `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
 | `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña |
 
 ## Tecnologías
