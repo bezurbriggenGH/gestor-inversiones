@@ -90,8 +90,9 @@ export function OperationForm({
           <Field label={isDividend ? 'Acciones que tenías' : 'Cantidad'} hint={isSell ? `Tenés ${num(holding)}` : undefined}>
             <input
               type="number"
-              min="0"
-              step="any"
+              min="1"
+              step="1"
+              inputMode="numeric"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               className={inputCls}

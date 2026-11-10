@@ -12,6 +12,7 @@ import {
   getRawOperations,
   adjustForSplits,
   loadFx,
+  maxHoldingBetween,
   parseCurrency,
   parseFxKind,
   requireUserAsset,
@@ -26,7 +27,7 @@ import { searchCatalog } from './catalog.ts';
 import { simulate } from './services/simulator.ts';
 import { classify, normalizeTicker } from './tickers.ts';
 import { checkRateLimit, currentUser, endSession, login, register, requireUser, startSession, userId } from './auth.ts';
-import { HttpError, arDate } from './util.ts';
+import { HttpError, addDays, arDate, isRealDate } from './util.ts';
 
 export const router = Router();
 
@@ -98,7 +99,7 @@ router.get('/simulate', async (req, res) => {
   const amount = Number(req.query.amount);
   if (!(amount > 0) || amount > 1e13) throw new HttpError(400, 'Ingresá un monto mayor a cero');
   const date = String(req.query.date ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, 'Elegí una fecha');
+  if (!isRealDate(date)) throw new HttpError(400, 'Elegí una fecha válida');
   await ensureCatalogAsset(ticker);
   await Promise.allSettled([syncAsset(ticker), syncFx(), syncIndices()]);
   const { currency, fx } = q(req);
@@ -174,6 +175,24 @@ function cleanText(v: unknown, max: number): string | null {
 
 const OP_TYPES: OpType[] = ['COMPRA', 'VENTA', 'DIVIDENDO'];
 
+// Límites de sentido común: nadie tiene mil millones de acciones de una empresa
+const MAX_QUANTITY = 1_000_000_000;
+const MAX_PRICE = 1_000_000_000_000;
+// Un dividendo se paga semanas después de la fecha de corte: si vendiste en el medio,
+// lo cobrás igual. Por eso se mira lo máximo que tuviste en los 90 días anteriores al pago.
+const DIVIDEND_WINDOW_DAYS = 90;
+
+/** Un dividendo solo puede ser por acciones que tuviste cerca de la fecha de pago. */
+function assertPossibleDividend(ops: OperationRow[], div: OperationRow, ticker: string) {
+  const from = addDays(div.date, -DIVIDEND_WINDOW_DAYS).toISOString().slice(0, 10);
+  const max = maxHoldingBetween(ops, from, div.date);
+  const when = div.date.split('-').reverse().join('/');
+  if (max <= 0) throw new HttpError(409, `No tenías ${ticker} en los 90 días anteriores al ${when}: no pudiste cobrar ese dividendo.`);
+  if (div.quantity > max + 1e-9) {
+    throw new HttpError(409, `El dividendo es por ${div.quantity} acciones, pero en los 90 días anteriores al ${when} tuviste como mucho ${max}.`);
+  }
+}
+
 /** Justificación de una operación: título, texto y un link opcional. */
 function readNote(b: Record<string, unknown>) {
   const link = cleanText(b.note_link, 500);
@@ -208,18 +227,27 @@ router.post('/assets/:ticker/operations', (req, res) => {
   const type = b.type as OpType;
   if (!OP_TYPES.includes(type)) throw new HttpError(400, 'El tipo debe ser COMPRA, VENTA o DIVIDENDO');
   const date = String(b.date ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, 'Fecha inválida');
+  if (!isRealDate(date)) throw new HttpError(400, 'Fecha inválida');
   if (date > arDate()) throw new HttpError(400, 'La fecha no puede ser futura');
   const quantity = Number(b.quantity);
   const price = Number(b.price);
   const fees = b.fees === '' || b.fees == null ? 0 : Number(b.fees);
   if (!(quantity > 0) || !Number.isFinite(quantity)) throw new HttpError(400, 'La cantidad debe ser mayor a 0');
+  // En BYMA no se operan fracciones de acciones ni de CEDEARs
+  if (!Number.isInteger(quantity)) throw new HttpError(400, 'La cantidad tiene que ser un número entero (no se operan fracciones de acciones)');
+  if (quantity > MAX_QUANTITY) throw new HttpError(400, 'La cantidad es demasiado grande');
   if (!(price > 0) || !Number.isFinite(price)) throw new HttpError(400, 'El precio debe ser mayor a 0');
+  if (price > MAX_PRICE) throw new HttpError(400, 'El precio es demasiado grande');
   if (!(fees >= 0) || !Number.isFinite(fees)) throw new HttpError(400, 'Las comisiones no pueden ser negativas');
-  if (type !== 'COMPRA' && fees >= quantity * price) throw new HttpError(400, 'Las comisiones o retenciones no pueden superar el total');
+  if (type === 'COMPRA' ? fees > quantity * price : fees >= quantity * price) {
+    throw new HttpError(400, 'Las comisiones o retenciones no pueden superar el monto de la operación');
+  }
 
   const draft = { user_id: uid, ticker, type, date, quantity, price, fees, ...readNote(b) };
-  assertNoShortSelling([...getOperations(uid, ticker), ...adjustForSplits([{ ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }])]);
+  const existing = getOperations(uid, ticker);
+  const [adjusted] = adjustForSplits([{ ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }]);
+  assertNoShortSelling([...existing, adjusted]);
+  if (type === 'DIVIDENDO') assertPossibleDividend(existing, adjusted, ticker);
   res.status(201).json({ id: insertOperation(draft) });
 });
 

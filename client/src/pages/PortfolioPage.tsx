@@ -211,6 +211,7 @@ function usePref<T extends string>(key: string, allowed: readonly T[], fallback:
 }
 
 export function PortfolioPage() {
+  const { currency } = useSettings();
   const { data, isLoading, error } = usePortfolio();
   const history = useHistory();
   const [adding, setAdding] = useState(false);
@@ -225,9 +226,24 @@ export function PortfolioPage() {
     onSuccess: () => DATA_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })),
   });
 
+  // El aviso dice qué se pierde en cada caso: borrar un activo borra toda su historia
   function confirmDelete(p: PortfolioPosition) {
-    const msg = `¿Eliminar ${p.ticker}? Se borran también todas sus operaciones registradas.`;
-    if (window.confirm(msg)) remove.mutate(p.ticker);
+    const lines = [`¿Eliminar ${p.ticker}?`, ''];
+    if (p.quantity > 0) {
+      lines.push(
+        `Todavía tenés ${num(p.quantity)} ${p.ticker} por ${money(p.marketValue, currency)}. Van a desaparecer de tu cartera, de su valor y de la evolución, aunque en el broker los sigas teniendo.`,
+        '',
+        'Si los vendiste, en vez de eliminar el activo registrá la venta.',
+      );
+    } else if (p.totalGain !== 0) {
+      lines.push(
+        `Ya no tenés ${p.ticker}, pero su resultado (${money(p.totalGain, currency, true)}) es parte de tu ganancia total y dejaría de contar.`,
+        '',
+        'Los activos que ya no tenés están ocultos en la cartera: no hace falta eliminarlos.',
+      );
+    }
+    lines.push('', 'Se borran todas sus operaciones, fotos y alertas. No se puede deshacer.');
+    if (window.confirm(lines.join('\n'))) remove.mutate(p.ticker);
   }
 
   const all = data?.positions ?? [];

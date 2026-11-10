@@ -1,0 +1,186 @@
+// Casos límite: "¿qué pasa si…?" — lo que una persona podría cargar mal desde la pantalla.
+// Se prueba el servidor de punta a punta (como lo usa la app), con una base vacía.
+import './helpers.ts';
+import { after, before, describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
+import { run } from '../src/db.ts';
+import { router } from '../src/routes.ts';
+import { isRealDate } from '../src/util.ts';
+import { maxHoldingBetween } from '../src/services/portfolio.ts';
+import { op } from './helpers.ts';
+
+// ---------- Un servidor de prueba con un usuario y un activo ----------
+
+let server: Server;
+let base = '';
+const COOKIE = 'sid=sesion-de-prueba';
+
+before(async () => {
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (1, 'Prueba', 'prueba@test.com', 'x')");
+  run('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, 1, ?)', 'sesion-de-prueba', Date.now() + 86_400_000);
+  run("INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES ('AAA', 'AAA.BA', 'Prueba', 'ACCION', ?)", Date.now());
+  run("INSERT INTO prices (ticker, date, close) VALUES ('AAA', '2025-01-02', 100)");
+  run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'AAA')");
+  // Todo figura como recién actualizado: los tests nunca salen a internet (Yahoo, dólar, índices)
+  for (const key of ['fx', 'fx-history', 'indices', 'splits:AAA']) {
+    run('INSERT INTO sync_state (key, value) VALUES (?, ?)', key, Date.now());
+  }
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api', router);
+  app.use((err: { status?: number; message: string }, _req: Request, res: Response, _next: NextFunction) => {
+    res.status(err.status ?? 500).json({ error: err.message });
+  });
+  server = app.listen(0);
+  base = `http://localhost:${(server.address() as AddressInfo).port}/api`;
+});
+after(() => server.close());
+
+async function call(method: string, path: string, body?: unknown) {
+  const r = await fetch(base + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', Cookie: COOKIE },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await r.text();
+  return { status: r.status, error: text ? (JSON.parse(text).error as string | undefined) : undefined, body: text ? JSON.parse(text) : null };
+}
+
+/** Carga una operación de AAA; por defecto, comprar 10 a $100 el 02/01/2025. */
+const add = (o: Record<string, unknown> = {}) =>
+  call('POST', '/assets/AAA/operations', { type: 'COMPRA', date: '2025-01-02', quantity: 10, price: 100, fees: 0, ...o });
+
+// ---------- Casos ----------
+
+describe('Cantidades, precios y comisiones', () => {
+  test('una compra normal se guarda', async () => {
+    assert.equal((await add()).status, 201); // ahora tengo 10
+  });
+
+  for (const [caso, datos, mensaje] of [
+    ['cantidad negativa', { quantity: -5 }, /mayor a 0/],
+    ['cantidad cero', { quantity: 0 }, /mayor a 0/],
+    ['cantidad con decimales (2,5 acciones)', { quantity: 2.5 }, /entero/],
+    ['cantidad que no es un número', { quantity: 'abc' }, /mayor a 0/],
+    ['cantidad absurda', { quantity: 1e20 }, /demasiado grande/],
+    ['precio negativo', { price: -100 }, /mayor a 0/],
+    ['precio cero', { price: 0 }, /mayor a 0/],
+    ['comisión negativa', { fees: -1 }, /negativas/],
+    ['comisión mayor que lo que se compró', { quantity: 1, price: 100, fees: 1000 }, /superar/],
+    ['tipo de operación inventado', { type: 'REGALO' }, /COMPRA, VENTA o DIVIDENDO/],
+  ] as const) {
+    test(`rechaza ${caso}`, async () => {
+      const r = await add(datos);
+      assert.equal(r.status, 400);
+      assert.match(r.error!, mensaje);
+    });
+  }
+});
+
+describe('Fechas', () => {
+  test('rechaza una fecha futura', async () => {
+    assert.equal((await add({ date: '2099-01-01' })).status, 400);
+  });
+
+  test('rechaza una fecha que no existe (30 de febrero)', async () => {
+    assert.equal((await add({ date: '2025-02-30' })).status, 400);
+  });
+
+  test('rechaza una fecha en otro formato', async () => {
+    assert.equal((await add({ date: '02/01/2025' })).status, 400);
+  });
+
+  test('reconoce fechas reales, incluido el 29 de febrero de un año bisiesto', () => {
+    assert.ok(isRealDate('2024-02-29'));
+    assert.ok(!isRealDate('2025-02-29'));
+    assert.ok(!isRealDate('2025-13-01'));
+  });
+});
+
+describe('Ventas', () => {
+  test('no se puede vender más de lo que se tiene', async () => {
+    const r = await add({ type: 'VENTA', date: '2025-03-01', quantity: 11 });
+    assert.equal(r.status, 409);
+    assert.match(r.error!, /había 10/);
+  });
+
+  test('no se puede vender antes de haber comprado', async () => {
+    const r = await add({ type: 'VENTA', date: '2024-12-01', quantity: 1 });
+    assert.equal(r.status, 409);
+    assert.match(r.error!, /no hay compras anteriores/);
+  });
+
+  test('una venta posible se guarda', async () => {
+    assert.equal((await add({ type: 'VENTA', date: '2025-03-01', quantity: 4, price: 120 })).status, 201); // quedan 6
+  });
+
+  test('no se puede borrar una compra si una venta quedaría sin respaldo', async () => {
+    const ops = (await call('GET', '/assets/AAA?currency=ARS&fx=bolsa')).body.operations as { id: number; type: string }[];
+    const compra = ops.find((o) => o.type === 'COMPRA')!;
+    const r = await call('DELETE', `/operations/${compra.id}`);
+    assert.equal(r.status, 409);
+    assert.match(r.error!, /sin respaldo/);
+  });
+});
+
+describe('Dividendos', () => {
+  test('no por más acciones de las que se tenían', async () => {
+    const r = await add({ type: 'DIVIDENDO', date: '2025-03-10', quantity: 50, price: 2 });
+    assert.equal(r.status, 409);
+    assert.match(r.error!, /como mucho 10/);
+  });
+
+  test('no de una época en que no se tenía el activo', async () => {
+    const r = await add({ type: 'DIVIDENDO', date: '2024-06-01', quantity: 5, price: 2 });
+    assert.equal(r.status, 409);
+    assert.match(r.error!, /No tenías AAA/);
+  });
+
+  test('sí si vendiste después de la fecha de corte (se mira lo que tuviste en los 90 días anteriores)', async () => {
+    // El 01/03 vendí 4 y me quedaron 6, pero el dividendo del 10/03 puede ser por las 10 que tenía antes
+    assert.equal((await add({ type: 'DIVIDENDO', date: '2025-03-10', quantity: 10, price: 2 })).status, 201);
+  });
+
+  test('lo máximo que se tuvo entre dos fechas', () => {
+    const ops = [op('COMPRA', '2025-01-02', 10, 100), op('VENTA', '2025-03-01', 4, 120), op('COMPRA', '2025-05-01', 20, 90)];
+    assert.equal(maxHoldingBetween(ops, '2025-02-01', '2025-04-01'), 10);
+    assert.equal(maxHoldingBetween(ops, '2025-03-02', '2025-04-01'), 6);
+    assert.equal(maxHoldingBetween(ops, '2024-01-01', '2024-12-31'), 0);
+  });
+});
+
+describe('Activos', () => {
+  test('no se puede cargar una operación de un activo que no está en la cartera', async () => {
+    const r = await call('POST', '/assets/ZZZ/operations', { type: 'COMPRA', date: '2025-01-02', quantity: 1, price: 1 });
+    assert.equal(r.status, 404);
+  });
+
+  test('no se puede agregar dos veces el mismo activo', async () => {
+    assert.equal((await call('POST', '/assets', { ticker: 'AAA' })).status, 409);
+  });
+
+  test('rechaza un ticker con símbolos raros', async () => {
+    assert.equal((await call('POST', '/assets', { ticker: 'GG@L!' })).status, 400);
+  });
+
+  test('al borrar un activo se borra toda su historia, y si se vuelve a agregar empieza de cero', async () => {
+    assert.equal((await call('DELETE', '/assets/AAA')).status, 204);
+    assert.equal((await call('GET', '/assets/AAA?currency=ARS&fx=bolsa')).status, 404);
+    // El activo sigue en el catálogo (sus precios se comparten): se puede volver a agregar sin consultar Yahoo
+    assert.equal((await call('POST', '/assets', { ticker: 'AAA' })).status, 201);
+    const detalle = await call('GET', '/assets/AAA?currency=ARS&fx=bolsa');
+    assert.equal(detalle.body.operations.length, 0);
+    assert.equal(detalle.body.position.quantity, 0);
+  });
+});
+
+describe('Sin sesión', () => {
+  test('sin iniciar sesión no se puede ver ni cargar nada', async () => {
+    const r = await fetch(base + '/portfolio');
+    assert.equal(r.status, 401);
+  });
+});

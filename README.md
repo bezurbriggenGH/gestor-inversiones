@@ -87,6 +87,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta y que el Diario de decisiones juzgue en dólares |
 | `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
+| `server/test/validaciones.test.ts` | Casos límite cargados desde la app: cantidades negativas o con decimales, ventas de más, fechas imposibles, dividendos imposibles, borrar activos |
 | `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña |
 
 ## Tecnologías

@@ -144,6 +144,20 @@ export function holdingBefore(ops: OperationRow[], date: string): number {
   return Math.max(0, qty);
 }
 
+/** Lo máximo que se tuvo entre dos fechas (incluidas). Para controlar que un dividendo sea posible. */
+export function maxHoldingBetween(ops: OperationRow[], from: string, to: string): number {
+  let qty = holdingBefore(ops, from);
+  let max = qty;
+  for (const op of sortOps(ops)) {
+    if (op.date < from) continue;
+    if (op.date > to) break;
+    if (op.type === 'COMPRA') qty += op.quantity;
+    else if (op.type === 'VENTA') qty -= op.quantity;
+    max = Math.max(max, qty);
+  }
+  return max;
+}
+
 export function opTotal(op: Pick<OperationRow, 'type' | 'quantity' | 'price' | 'fees'>): number {
   const gross = op.quantity * op.price;
   return op.type === 'COMPRA' ? gross + op.fees : gross - op.fees;
