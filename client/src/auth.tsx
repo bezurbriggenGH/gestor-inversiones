@@ -48,8 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await api.logout().catch(() => {});
-    qc.clear();
+    // Primero se marca que no hay nadie conectado: la pantalla lo ve y muestra el ingreso.
+    // Recién después se borra lo demás (cartera, precios…), sin tocar "me".
+    // (Antes se borraba todo junto con qc.clear(), y la pantalla seguía mirando el dato
+    // viejo de "me" que ya no existía: no se enteraba del cierre hasta recargar.)
     qc.setQueryData(['me'], null);
+    qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
   };
 
   return (

@@ -7,8 +7,7 @@
     "build": "npm run build --prefix client",
     "start": "node server/src/index.ts",
     "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client",
-    "test": "npm test --prefix server",
-    "reset-password": "npm run reset-password --prefix server"
+    "test": "npm test --prefix server"
   },
   "devDependencies": {
     "concurrently": "^10.0.6"

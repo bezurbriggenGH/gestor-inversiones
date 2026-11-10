@@ -91,55 +91,12 @@ export function checkRateLimit(key: string) {
   else a.count++;
 }
 
-function validatePassword(password: string) {
-  if (password.length < 8) throw new HttpError(400, 'La contraseña debe tener al menos 8 caracteres');
-}
-
-/** Token de la sesión actual (para no cerrarla al cambiar la contraseña). */
-export function sessionToken(req: Request): string | undefined {
-  return readCookie(req, COOKIE);
-}
-
-/**
- * Guarda una contraseña nueva y cierra las demás sesiones abiertas (otras compus o
- * celulares), por si alguien más tenía acceso. `keepToken` es la sesión que sigue abierta.
- */
-function setPassword(userId: number, password: string, keepToken = '') {
-  validatePassword(password);
-  tx(() => {
-    run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), userId);
-    run('DELETE FROM sessions WHERE user_id = ? AND token <> ?', userId, keepToken);
-  });
-}
-
-/** Cambio de contraseña desde la app: pide la actual para confirmar que sos vos. */
-export function changePassword(userId: number, current: string, next: string, keepToken?: string): void {
-  const row = get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', userId);
-  // 400 y no 401: un 401 haría que la app cierre la sesión
-  if (!row || !verifyPassword(current, row.password_hash)) throw new HttpError(400, 'La contraseña actual no es correcta');
-  if (current === next) throw new HttpError(400, 'La contraseña nueva tiene que ser distinta de la actual');
-  setPassword(userId, next, keepToken);
-}
-
-/**
- * Recuperación para quien se olvidó la contraseña. La app corre en la compu del usuario
- * y no manda emails, así que se hace desde la terminal (npm run reset-password):
- * quien puede abrir la terminal de esa compu ya tiene acceso a la base de datos.
- * Cierra todas las sesiones abiertas.
- */
-export function resetPassword(email: string, password: string): User {
-  const user = get<User>('SELECT id, name, email FROM users WHERE email = ?', email.trim().toLowerCase());
-  if (!user) throw new HttpError(404, `No hay ninguna cuenta con el email ${email.trim()}`);
-  setPassword(user.id, password);
-  return user;
-}
-
 export function register(name: string, email: string, password: string): User {
   name = name.trim();
   email = email.trim().toLowerCase();
   if (name.length < 2) throw new HttpError(400, 'Ingresá tu nombre');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Email inválido');
-  validatePassword(password);
+  if (password.length < 8) throw new HttpError(400, 'La contraseña debe tener al menos 8 caracteres');
   if (get('SELECT 1 FROM users WHERE email = ?', email)) throw new HttpError(409, 'Ya existe una cuenta con ese email');
 
   return tx(() => {

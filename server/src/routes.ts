@@ -24,18 +24,7 @@ import { checkAlerts, listAlerts } from './services/alerts.ts';
 import { searchCatalog } from './catalog.ts';
 import { simulate } from './services/simulator.ts';
 import { classify, normalizeTicker } from './tickers.ts';
-import {
-  changePassword,
-  checkRateLimit,
-  currentUser,
-  endSession,
-  login,
-  register,
-  requireUser,
-  sessionToken,
-  startSession,
-  userId,
-} from './auth.ts';
+import { checkRateLimit, currentUser, endSession, login, register, requireUser, startSession, userId } from './auth.ts';
 import { HttpError, arDate } from './util.ts';
 
 export const router = Router();
@@ -70,13 +59,6 @@ router.get('/auth/me', (req, res) => {
 
 // ---------- Todo lo de abajo requiere sesión ----------
 router.use(requireUser);
-
-router.post('/auth/password', (req, res) => {
-  checkRateLimit(`password:${userId(res)}`);
-  const { current, next } = req.body ?? {};
-  changePassword(userId(res), String(current ?? ''), String(next ?? ''), sessionToken(req));
-  res.status(204).end();
-});
 
 const q = (req: { query: Record<string, unknown> }) => ({
   currency: parseCurrency(req.query.currency),

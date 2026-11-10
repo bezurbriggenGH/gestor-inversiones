@@ -4,7 +4,6 @@ import { useSettings } from '../settings';
 import { useAuth } from '../auth';
 import { useAlerts } from '../hooks';
 import type { Currency, FxKind } from '../api';
-import { ChangePasswordDialog } from './ChangePasswordDialog';
 
 function Segmented<T extends string>({
   value,
@@ -45,7 +44,6 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const alerts = useAlerts();
   const [open, setOpen] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
   const unseen = alerts.data?.filter((a) => a.triggered_at && !a.seen).length ?? 0;
 
   const links = [
@@ -125,16 +123,9 @@ export function Sidebar() {
               ]}
             />
           </div>
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <button onClick={() => setChangingPassword(true)} className="hover:text-text">
-              Cambiar contraseña
-            </button>
-            <span aria-hidden>·</span>
-            <button onClick={logout} className="hover:text-text">
-              Cerrar sesión
-            </button>
-          </div>
-          {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
+          <button onClick={logout} className="mt-2 text-left text-xs text-muted hover:text-text">
+            Cerrar sesión
+          </button>
         </div>
       </div>
     </aside>
