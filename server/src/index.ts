@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { router } from './routes.ts';
 import { syncAll } from './services/sync.ts';
+import { cleanAllHistories } from './services/clean.ts';
 import { run } from './db.ts';
 
 const app = express();
@@ -36,6 +37,9 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (status >= 500) console.error(err);
   res.status(status).json({ error: status >= 500 && !err?.status ? 'Error interno del servidor' : err.message });
 });
+
+// Corrige lo que ya estaba guardado (cambios de ratio no informados, dividendos imposibles)
+cleanAllHistories();
 
 const PORT = Number(process.env.PORT ?? 3001);
 app.listen(PORT, () => {

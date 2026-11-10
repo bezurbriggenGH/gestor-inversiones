@@ -6,6 +6,7 @@ import { fetchChart, type Bar, type Dividend, type Split } from '../providers/ya
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
 import { fetchDepositRate, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
+import { cleanHistory } from './clean.ts';
 import { addDays, lastMarketTime } from '../util.ts';
 import { usSymbolOf } from '../cedears.ts';
 
@@ -65,6 +66,8 @@ export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = []
     for (const d of dividends) divStmt.run(ticker, d.date, d.amount);
     for (const s of splits) splitStmt.run(ticker, s.date, s.factor);
   });
+  // Cambios de ratio que Yahoo no informó y dividendos imposibles
+  cleanHistory(ticker);
 }
 
 function saveFx(kind: FxKind, points: FxPoint[]): void {

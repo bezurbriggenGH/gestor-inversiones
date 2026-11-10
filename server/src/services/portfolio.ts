@@ -149,11 +149,29 @@ export function opTotal(op: Pick<OperationRow, 'type' | 'quantity' | 'price' | '
   return op.type === 'COMPRA' ? gross + op.fees : gross - op.fees;
 }
 
+/**
+ * Lo máximo que llegaste a tener puesto de tu bolsillo: compras menos lo que ya
+ * recuperaste con ventas y dividendos, en su punto más alto.
+ * Es la base del % de ganancia total. Sumar todas las compras históricas no sirve:
+ * si comprás y vendés varias veces, la misma plata se contaría muchas veces.
+ */
+export function peakCapital(ops: OperationRow[], conv: Converter): number {
+  let net = 0;
+  let peak = 0;
+  for (const op of sortOps(ops)) {
+    const total = conv(opTotal(op), op.date);
+    net += op.type === 'COMPRA' ? total : -total;
+    peak = Math.max(peak, net);
+  }
+  return peak;
+}
+
 export interface Position {
   quantity: number;
   avgCost: number; // PPP por unidad
   costBasis: number; // costo de lo que todavía tenés
   invested: number; // total puesto en compras (histórico)
+  peakCapital: number; // lo máximo que llegaste a tener puesto (base del % total)
   price: number;
   priceDate: string | null;
   marketValue: number;
@@ -205,12 +223,14 @@ export function computePosition(ops: OperationRow[], last: PriceRow | undefined,
   const marketValue = quantity * price;
   const unrealized = quantity > 0 ? marketValue - costBasis : 0;
   const totalGain = realized + unrealized + dividends;
+  const peak = peakCapital(ops, conv);
 
   const position: Position = {
     quantity,
     avgCost: quantity > 0 ? costBasis / quantity : 0,
     costBasis,
     invested,
+    peakCapital: peak,
     price,
     priceDate: last?.date ?? null,
     marketValue,
@@ -219,7 +239,7 @@ export function computePosition(ops: OperationRow[], last: PriceRow | undefined,
     realized,
     dividends,
     totalGain,
-    totalGainPct: invested > 0 ? totalGain / invested : 0,
+    totalGainPct: peak > 0 ? totalGain / peak : 0,
     dayChange: quantity * (price - prevPrice),
     dayChangePct: prevPrice > 0 ? price / prevPrice - 1 : 0,
   };
@@ -338,6 +358,8 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
   const dayChange = sum('dayChange');
   const yesterdayValue = marketValue - dayChange;
   const totalGain = realized + unrealized + dividends;
+  // El pico se calcula sobre todas las operaciones juntas, en orden: no es la suma de los picos de cada activo
+  const peak = peakCapital(getOperations(userId), conv);
 
   return {
     currency,
@@ -347,12 +369,13 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
       marketValue,
       costBasis,
       invested,
+      peakCapital: peak,
       unrealized,
       unrealizedPct: costBasis > 0 ? unrealized / costBasis : 0,
       realized,
       dividends,
       totalGain,
-      totalGainPct: invested > 0 ? totalGain / invested : 0,
+      totalGainPct: peak > 0 ? totalGain / peak : 0,
       dayChange,
       dayChangePct: yesterdayValue > 0 ? dayChange / yesterdayValue : 0,
     },

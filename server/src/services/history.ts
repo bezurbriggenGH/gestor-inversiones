@@ -22,7 +22,10 @@ import {
 } from './portfolio.ts';
 
 export const BENCHMARKS = {
-  inflacion: { label: 'Inflación', description: 'Mantener el poder de compra (índice UVA)' },
+  inflacion: {
+    label: 'Inflación',
+    description: 'Mantener el poder de compra (índice UVA, que sigue a la inflación con 1 o 2 meses de retraso)',
+  },
   dolar: { label: 'Dólar MEP', description: 'Haber comprado dólares MEP' },
   plazofijo: { label: 'Plazo fijo', description: 'Plazo fijo a 30 días renovado' },
   merval: { label: 'Merval', description: 'Índice de las principales acciones argentinas' },
@@ -171,9 +174,14 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
 
   const benchmarks = (Object.keys(BENCHMARKS) as BenchmarkKey[]).map((k) => {
     const value = last.benchmarks[k];
+    // La alternativa "dólar" usa el mismo dólar que elegiste para ver la cartera (MEP o CCL)
+    const info =
+      k === 'dolar' && kind === 'contadoconliqui'
+        ? { label: 'Dólar CCL', description: 'Haber comprado dólares contado con liquidación' }
+        : BENCHMARKS[k];
     return {
       key: k,
-      ...BENCHMARKS[k],
+      ...info,
       available: value != null,
       value,
       diff: value != null ? last.value - value : null,
@@ -230,9 +238,13 @@ export function monthlyReturns(points: { date: string; value: number; netInveste
     }
     const prevValue = prev?.value ?? 0;
     const flow = p.netInvested - (prev?.netInvested ?? 0);
+    // Las compras se hacen durante el día y ya trabajan hasta el cierre: la plata que
+    // entró suma a la base. Las ventas y dividendos se cuentan al final del día.
+    // (Si solo se dividiera por el valor de ayer, una compra grande sobre una cartera
+    // chica haría que una baja menor pareciera una caída enorme.)
+    const base = prevValue + Math.max(flow, 0);
     let r = 0;
-    if (prevValue > 1e-6) r = (p.value - flow) / prevValue - 1;
-    else if (flow > 1e-6) r = p.value / flow - 1; // primer día: del precio de compra al cierre
+    if (base > 1e-6) r = (p.value - Math.min(flow, 0)) / base - 1;
     factor *= 1 + r;
     gain += p.value - prevValue - flow;
   }
