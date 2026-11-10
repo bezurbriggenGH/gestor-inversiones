@@ -39,3 +39,22 @@ export function todayIso(): string {
 }
 
 export const FX_LABEL = { bolsa: 'MEP', contadoconliqui: 'CCL' } as const;
+
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/**
+ * A qué día corresponde la "variación del día": "hoy" solo si el último precio es de hoy.
+ * Un fin de semana, un feriado o antes de que abra el mercado, es la última rueda: "el viernes 07/11".
+ */
+export function dayLabel(priceDate: string | null | undefined): string {
+  if (!priceDate || priceDate >= todayIso()) return 'hoy';
+  const weekday = WEEKDAYS[new Date(`${priceDate}T12:00:00Z`).getUTCDay()];
+  return `el ${weekday} ${priceDate.slice(8, 10)}/${priceDate.slice(5, 7)}`;
+}
+
+/** La fecha de precio más reciente de la cartera (para decir a qué día corresponde la variación). */
+export function latestPriceDate(positions: { priceDate: string | null; quantity: number }[]): string | null {
+  return positions.filter((p) => p.quantity > 0 && p.priceDate).reduce<string | null>((m, p) => (!m || p.priceDate! > m ? p.priceDate : m), null);
+}
+
+export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

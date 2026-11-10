@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { History, Portfolio } from '../api';
 import { useSettings } from '../settings';
-import { FX_LABEL, date, money, pct, tone } from '../format';
+import { FX_LABEL, capitalize, date, dayLabel, latestPriceDate, money, pct, tone } from '../format';
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const CONCENTRATION_LIMIT = 0.35;
@@ -42,7 +42,7 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
           </span>
         )}
         <span className={`tabular mt-1 text-sm ${tone(s.dayChange)}`}>
-          {money(s.dayChange, currency, true)} ({pct(s.dayChangePct)}) hoy
+          {money(s.dayChange, currency, true)} ({pct(s.dayChangePct)}) {dayLabel(latestPriceDate(data.positions))}
         </span>
       </div>
 
@@ -98,15 +98,16 @@ export function Insights({ data, history }: { data: Portfolio; history?: History
   const items: { tone: 'up' | 'down' | 'info'; text: ReactNode }[] = [];
   const b = (t: string, cls = '') => <span className={`tabular font-medium ${cls}`}>{t}</span>;
 
-  // Hoy: qué movió más la cartera, en plata
+  // Último día con precios: qué movió más la cartera, en plata
   const mover = [...held].sort((a, c) => Math.abs(c.dayChange) - Math.abs(a.dayChange))[0];
   if (mover && Math.abs(data.summary.dayChange) > 0) {
     items.push({
       tone: data.summary.dayChange >= 0 ? 'up' : 'down',
       text: (
         <>
-          Hoy tu cartera {data.summary.dayChange >= 0 ? 'ganó' : 'perdió'} {b(money(Math.abs(data.summary.dayChange), currency))}. Lo que más
-          pesó fue {b(mover.ticker)} ({b(money(mover.dayChange, currency, true), tone(mover.dayChange))}).
+          {capitalize(dayLabel(latestPriceDate(data.positions)))} tu cartera {data.summary.dayChange >= 0 ? 'ganó' : 'perdió'}{' '}
+          {b(money(Math.abs(data.summary.dayChange), currency))}. Lo que más pesó fue {b(mover.ticker)} (
+          {b(money(mover.dayChange, currency, true), tone(mover.dayChange))}).
         </>
       ),
     });
@@ -140,7 +141,7 @@ export function Insights({ data, history }: { data: Portfolio; history?: History
     });
   }
 
-  // Mejor y peor
+  // Mejor y peor de lo que tenés hoy (como lo muestra el broker)…
   if (held.length > 1) {
     const sorted = [...held].sort((a, c) => c.unrealizedPct - a.unrealizedPct);
     const best = sorted[0];
@@ -149,14 +150,37 @@ export function Insights({ data, history }: { data: Portfolio; history?: History
       tone: 'info',
       text: (
         <>
-          Tu mejor inversión es {b(best.ticker)} ({b(pct(best.unrealizedPct), tone(best.unrealizedPct))}) y la peor {b(worst.ticker)} (
-          {b(pct(worst.unrealizedPct), tone(worst.unrealizedPct))}).
+          De lo que tenés hoy, la que más gana es {b(best.ticker)} ({b(pct(best.unrealizedPct), tone(best.unrealizedPct))}) y la que más
+          pierde, {b(worst.ticker)} ({b(pct(worst.unrealizedPct), tone(worst.unrealizedPct))}).
           {worst.unrealizedPct < 0 && (
             <>
               {' '}
               Para volver a su precio de compra, {worst.ticker} tiene que subir {b(pct(1 / (1 + worst.unrealizedPct) - 1).replace('+', ''))}.
             </>
           )}
+        </>
+      ),
+    });
+  }
+
+  // …y contando todo: ventas ya hechas, dividendos y también los activos que ya no tenés
+  const traded = data.positions.filter((p) => p.totalGain !== 0);
+  if (traded.length > 1) {
+    const byTotal = [...traded].sort((a, c) => c.totalGain - a.totalGain);
+    const top = byTotal[0];
+    const bottom = byTotal[byTotal.length - 1];
+    items.push({
+      tone: 'info',
+      text: (
+        <>
+          Contando también lo que ya vendiste, la que más plata te dio es {b(top.ticker)} ({b(money(top.totalGain, currency, true), tone(top.totalGain))})
+          {bottom.totalGain < 0 && (
+            <>
+              {' '}
+              y la que más te hizo perder, {b(bottom.ticker)} ({b(money(bottom.totalGain, currency, true), tone(bottom.totalGain))})
+            </>
+          )}
+          .
         </>
       ),
     });

@@ -18,10 +18,11 @@ export function VerdictBadge({ verdict, days }: { verdict: Verdict | null; days?
   );
 }
 
-/** "+12% a 30 días · −5% a 90 días · …" */
+/** "+12% a 30 días · −5% a 90 días · …" (cambios del precio en dólares) */
 export function HorizonList({ entry }: { entry: JournalEntry }) {
   return (
-    <div className="tabular flex flex-wrap gap-x-4 gap-y-1 text-xs">
+    <div className="tabular flex flex-wrap gap-x-4 gap-y-1 text-xs" title="Cambio del precio en dólares desde la operación">
+      <span className="text-muted">En US$:</span>
       {entry.horizons.map((h) => (
         <span key={h.days} className="text-muted">
           {h.days}d:{' '}
@@ -41,8 +42,8 @@ export function explainVerdict(e: JournalEntry): string {
   if (!e.verdict || e.verdictDays == null) return 'Todavía no pasaron 30 días desde la operación.';
   const h = e.horizons.find((x) => x.days === e.verdictDays);
   if (!h || !h.available) return '';
-  const moved = `${h.change > 0 ? 'subió' : 'bajó'} ${pct(Math.abs(h.change)).replace('+', '')} en ${h.days} días`;
-  if (e.verdict === 'NEUTRAL') return `El precio casi no se movió (${pct(h.change)} en ${h.days} días).`;
+  const moved = `${h.change > 0 ? 'subió' : 'bajó'} ${pct(Math.abs(h.change)).replace('+', '')} en dólares en ${h.days} días`;
+  if (e.verdict === 'NEUTRAL') return `El precio casi no se movió en dólares (${pct(h.change)} en ${h.days} días).`;
   if (e.type === 'COMPRA') return e.verdict === 'ACIERTO' ? `Buena compra: el precio ${moved}.` : `El precio ${moved} después de comprar.`;
   return e.verdict === 'ACIERTO' ? `Buena venta: el precio ${moved} después de vender.` : `Después de vender, el precio ${moved}.`;
 }

@@ -148,7 +148,8 @@ export function BenchmarkPage() {
       </section>
 
       <p className="text-xs text-muted">
-        Inflación: índice UVA (sigue al CER). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
+        Lo que sacaste con ventas y dividendos se descuenta igual en todas las alternativas, así que "Hoy tendrías" compara solo
+        lo que sigue invertido. Inflación: índice UVA (sigue al CER). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
         índice y del CEDEAR SPY. Fuentes: ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
       </p>
     </div>

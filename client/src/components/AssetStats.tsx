@@ -1,4 +1,4 @@
-import type { Currency, PricePoint } from '../api';
+import type { AssetType, Currency, PricePoint } from '../api';
 import { date, money, pct, tone } from '../format';
 
 function minusDays(iso: string, days: number): string {
@@ -66,7 +66,7 @@ function moveLabel(daily: number) {
 }
 
 /** Datos clave de la acción, explicados en palabras simples. */
-export function AssetStats({ series, currency, avgCost }: { series: PricePoint[]; currency: Currency; avgCost: number }) {
+export function AssetStats({ series, currency, avgCost, type }: { series: PricePoint[]; currency: Currency; avgCost: number; type: AssetType }) {
   if (series.length < 2) return null;
   const s = computeStats(series);
   if (!s.enoughData) return null;
@@ -79,7 +79,7 @@ export function AssetStats({ series, currency, avgCost }: { series: PricePoint[]
 
   return (
     <section className="flex flex-col gap-5 rounded-xl bg-panel p-5">
-      <h2 className="font-medium">Datos de la acción</h2>
+      <h2 className="font-medium">{type === 'CEDEAR' ? 'Datos del CEDEAR' : 'Datos de la acción'}</h2>
 
       {breakEven != null && (
         <p className="rounded-lg border border-down/30 bg-down/10 px-4 py-3 text-sm">

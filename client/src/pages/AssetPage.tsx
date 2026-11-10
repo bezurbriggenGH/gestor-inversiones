@@ -3,12 +3,13 @@ import { Link, useParams } from 'react-router';
 import type { OperationType, PendingDividend } from '../api';
 import { useAsset } from '../hooks';
 import { useSettings } from '../settings';
-import { date, money, num, pct, tone } from '../format';
+import { capitalize, date, dayLabel, money, num, pct, tone } from '../format';
 import { PriceChart } from '../components/PriceChart';
 import { CedearPanel } from '../components/CedearPanel';
 import { AssetStats } from '../components/AssetStats';
 import { OperationForm, type OperationPrefill } from '../components/OperationForm';
 import { AlertForm } from '../components/AlertForm';
+import { OperationHistory } from '../components/OperationHistory';
 import { Button, ErrorBox, Loading } from '../components/ui';
 
 function StatBox({ label, value, sub, cls = '' }: { label: string; value: string; sub?: string; cls?: string }) {
@@ -20,9 +21,6 @@ function StatBox({ label, value, sub, cls = '' }: { label: string; value: string
     </div>
   );
 }
-
-const DOT: Record<OperationType, string> = { COMPRA: 'bg-up', VENTA: 'bg-down', DIVIDENDO: 'bg-link' };
-const LABEL: Record<OperationType, string> = { COMPRA: 'Compra', VENTA: 'Venta', DIVIDENDO: 'Dividendo' };
 
 function PendingDividends({ items, onRegister }: { items: PendingDividend[]; onRegister: (d: PendingDividend) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -126,7 +124,7 @@ export function AssetPage() {
 
         {p.quantity > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:col-span-2 md:grid-cols-4">
-            <StatBox label="Hoy" value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
+            <StatBox label={capitalize(dayLabel(p.priceDate))} value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
             <StatBox label="Valor de lo que tenés" value={money(p.marketValue, currency)} sub={`${num(p.quantity)} × ${money(p.price, currency)}`} />
             <StatBox
               label="Ganancia en lo que tenés"
@@ -156,31 +154,11 @@ export function AssetPage() {
         )}
       </section>
 
-      <AssetStats series={data.series} currency={currency} avgCost={p.quantity > 0 ? p.avgCost : 0} />
+      <AssetStats series={data.series} currency={currency} avgCost={p.quantity > 0 ? p.avgCost : 0} type={asset.type} />
 
       {data.cedear && <CedearPanel ticker={asset.ticker} info={data.cedear} />}
 
-      <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
-        <h2 className="mb-1 rounded-md bg-card py-1.5 text-center text-sm">Historial</h2>
-        {operations.length === 0 && <p className="py-4 text-center text-sm text-muted">Todavía no registraste operaciones.</p>}
-        {operations.map((op) => (
-          <Link
-            key={op.id}
-            to={`/operacion/${op.id}`}
-            className="tabular grid grid-cols-[auto_1fr_1fr] items-center gap-x-4 gap-y-1 rounded-lg bg-card px-4 py-2.5 text-sm transition hover:bg-card-hover sm:grid-cols-[auto_6rem_8rem_6rem_1fr_1fr]"
-          >
-            <span className={`h-3.5 w-3.5 rounded-full ${DOT[op.type]}`} />
-            <span>{LABEL[op.type]}</span>
-            <span className="text-muted">{date(op.date)}</span>
-            <span>cant: {num(op.quantity)}</span>
-            <span>{money(op.priceConv, currency)}</span>
-            <span className="flex min-w-0 justify-between gap-2">
-              <span>{money(op.totalConv, currency)}</span>
-              {op.note_title && <span className="truncate text-xs text-muted">{op.note_title}</span>}
-            </span>
-          </Link>
-        ))}
-      </section>
+      <OperationHistory operations={operations} currency={currency} />
 
       {form && (
         <OperationForm ticker={asset.ticker} type={form.type} holding={p.quantity} prefill={form.prefill} onClose={() => setForm(null)} />

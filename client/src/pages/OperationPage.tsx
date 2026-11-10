@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type OperationType } from '../api';
+import { api, type Operation, type OperationType } from '../api';
 import { DATA_KEYS, useJournal, useOperation } from '../hooks';
 import { useSettings } from '../settings';
-import { FX_LABEL, date, money, num, tone } from '../format';
-import { Button, ErrorBox, Loading } from '../components/ui';
+import { FX_LABEL, date, money, num, pct, tone } from '../format';
+import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict } from '../components/Verdict';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -17,6 +18,81 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 const TYPE_STYLE: Record<OperationType, string> = { COMPRA: 'text-up', VENTA: 'text-down', DIVIDENDO: 'text-link' };
+
+/** Justificación de la operación: se puede agregar o cambiar en cualquier momento (también en las importadas). */
+function Note({ op }: { op: Operation }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(op.note_title ?? '');
+  const [body, setBody] = useState(op.note_body ?? '');
+  const [link, setLink] = useState(op.note_link ?? '');
+  const hasNote = Boolean(op.note_title || op.note_body || op.note_link);
+
+  const save = useMutation({
+    mutationFn: () => api.updateNote(op.id, { note_title: title, note_body: body, note_link: link }),
+    onSuccess: () => {
+      setEditing(false);
+      DATA_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+    },
+  });
+
+  if (editing) {
+    return (
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <h2 className="text-lg font-medium">Justificación</h2>
+        <Field label="Título" hint="Por ejemplo: «Compro porque bajó después de los resultados»">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} maxLength={120} autoFocus />
+        </Field>
+        <Field label="Por qué la hiciste">
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} className={`${inputCls} min-h-28`} maxLength={5000} />
+        </Field>
+        <Field label="Link (noticia, análisis…)">
+          <input value={link} onChange={(e) => setLink(e.target.value)} className={inputCls} placeholder="https://" maxLength={500} />
+        </Field>
+        <ErrorBox error={save.error} />
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary" disabled={save.isPending}>
+            {save.isPending ? 'Guardando…' : 'Guardar'}
+          </Button>
+          <Button type="button" onClick={() => setEditing(false)}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="text-lg font-medium">{op.note_title ?? (hasNote ? 'Justificación' : 'Sin justificación')}</h2>
+        <Button onClick={() => setEditing(true)} className="shrink-0 text-xs">
+          {hasNote ? 'Editar' : 'Agregar justificación'}
+        </Button>
+      </div>
+      {op.note_body ? (
+        <p className="whitespace-pre-line text-sm leading-relaxed text-text/85">{op.note_body}</p>
+      ) : (
+        !hasNote && (
+          <p className="text-sm text-muted">
+            Anotá por qué hiciste esta operación. Con el tiempo, el Diario de decisiones te muestra si tus motivos funcionaron.
+          </p>
+        )
+      )}
+      {op.note_link && (
+        <a href={op.note_link} target="_blank" rel="noreferrer" className="break-all text-sm text-link hover:underline">
+          {op.note_link}
+        </a>
+      )}
+    </section>
+  );
+}
 
 export function OperationPage() {
   const { id = '' } = useParams();
@@ -64,7 +140,10 @@ export function OperationPage() {
         </Row>
         {op.type === 'VENTA' && op.realized != null && (
           <Row label="Resultado de la venta">
-            <span className={tone(op.realized)}>{money(op.realized, currency, true)}</span>
+            <span className={tone(op.realized)}>
+              {money(op.realized, currency, true)}
+              {op.realizedPct != null && <span className="ml-1.5 text-sm">({pct(op.realizedPct)})</span>}
+            </span>
           </Row>
         )}
         {op.fxRate != null && <Row label={`Dólar ${FX_LABEL[fxKind]} ese día`}>{money(op.fxRate, 'ARS')}</Row>}
@@ -92,19 +171,7 @@ export function OperationPage() {
       {!isDividend && (
         <>
           <hr className="border-line" />
-          <section className="flex flex-col gap-4">
-            <h2 className="text-lg font-medium">{op.note_title ?? 'Sin justificación'}</h2>
-            {op.note_body ? (
-              <p className="whitespace-pre-line text-sm leading-relaxed text-text/85">{op.note_body}</p>
-            ) : (
-              !op.note_title && <p className="text-sm text-muted">No dejaste notas sobre esta operación.</p>
-            )}
-            {op.note_link && (
-              <a href={op.note_link} target="_blank" rel="noreferrer" className="break-all text-sm text-link hover:underline">
-                {op.note_link}
-              </a>
-            )}
-          </section>
+          <Note key={op.id} op={op} />
         </>
       )}
 

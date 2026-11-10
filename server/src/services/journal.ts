@@ -4,6 +4,10 @@
 // - Compra: acierto si después subió (> +2%), error si bajó (< −2%).
 // - Venta:  acierto si después bajó (vendiste antes de una caída), error si subió.
 // Entre −2% y +2% se considera neutral.
+//
+// Los cambios de precio se miden SIEMPRE en dólares, aunque estés viendo la app en pesos:
+// con inflación, casi cualquier precio en pesos sube más de 2% en 90 días, y entonces
+// casi todas las compras parecerían aciertos y casi todas las ventas, errores.
 import { all } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { DateSeries, getOperations, loadFx, makeConverter, sortOps, type Currency } from './portfolio.ts';
@@ -28,7 +32,8 @@ function judge(type: 'COMPRA' | 'VENTA', change: number): Verdict {
 
 export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
   const fx = loadFx(kind);
-  const conv = makeConverter(currency, fx);
+  const conv = makeConverter(currency, fx); // para mostrar precios en la moneda elegida
+  const judgeConv = makeConverter(fx.empty ? 'ARS' : 'USD', fx); // para medir si acertaste
   const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO');
 
   const priceCache = new Map<string, DateSeries>();
@@ -46,17 +51,17 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
       const s = pricesOf(op.ticker);
       const lastDate = s.empty ? '' : s.dates[s.dates.length - 1];
       const base = conv(op.price, op.date);
+      const baseUsd = judgeConv(op.price, op.date);
       const type = op.type as 'COMPRA' | 'VENTA';
       const horizons = HORIZONS.map((days) => {
         const target = addDaysIso(op.date, days);
         if (s.empty || target > lastDate) return { days, available: false as const };
         const price = conv(s.at(target), target);
-        const change = price / base - 1;
+        const change = judgeConv(s.at(target), target) / baseUsd - 1;
         return { days, available: true as const, price, change, verdict: judge(type, change) };
       });
-      // Precio de hoy, para operaciones recientes
-      const nowPrice = s.empty ? null : conv(s.at(lastDate), lastDate);
-      const sinceChange = nowPrice != null ? nowPrice / base - 1 : null;
+      // Cambio hasta hoy, para operaciones recientes
+      const sinceChange = s.empty ? null : judgeConv(s.at(lastDate), lastDate) / baseUsd - 1;
       // Veredicto principal: a 90 días (o 30 si todavía no pasaron 90).
       // 180 días se muestra pero no decide: a ese plazo pesa más el mercado que la decisión.
       const main = [...horizons].reverse().find((h) => h.available && h.days <= MAIN_HORIZON);

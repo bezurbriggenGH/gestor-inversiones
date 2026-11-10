@@ -169,6 +169,13 @@ function cleanText(v: unknown, max: number): string | null {
 
 const OP_TYPES: OpType[] = ['COMPRA', 'VENTA', 'DIVIDENDO'];
 
+/** Justificación de una operación: título, texto y un link opcional. */
+function readNote(b: Record<string, unknown>) {
+  const link = cleanText(b.note_link, 500);
+  if (link && !/^https?:\/\//i.test(link)) throw new HttpError(400, 'El link debe empezar con http:// o https://');
+  return { note_title: cleanText(b.note_title, 120), note_body: cleanText(b.note_body, 5000), note_link: link };
+}
+
 function insertOperation(op: Omit<OperationRow, 'id' | 'created_at'>) {
   return Number(
     run(
@@ -205,21 +212,8 @@ router.post('/assets/:ticker/operations', (req, res) => {
   if (!(price > 0) || !Number.isFinite(price)) throw new HttpError(400, 'El precio debe ser mayor a 0');
   if (!(fees >= 0) || !Number.isFinite(fees)) throw new HttpError(400, 'Las comisiones no pueden ser negativas');
   if (type !== 'COMPRA' && fees >= quantity * price) throw new HttpError(400, 'Las comisiones o retenciones no pueden superar el total');
-  const link = cleanText(b.note_link, 500);
-  if (link && !/^https?:\/\//i.test(link)) throw new HttpError(400, 'El link debe empezar con http:// o https://');
 
-  const draft = {
-    user_id: uid,
-    ticker,
-    type,
-    date,
-    quantity,
-    price,
-    fees,
-    note_title: cleanText(b.note_title, 120),
-    note_body: cleanText(b.note_body, 5000),
-    note_link: link,
-  };
+  const draft = { user_id: uid, ticker, type, date, quantity, price, fees, ...readNote(b) };
   assertNoShortSelling([...getOperations(uid, ticker), ...adjustForSplits([{ ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }])]);
   res.status(201).json({ id: insertOperation(draft) });
 });
@@ -227,6 +221,21 @@ router.post('/assets/:ticker/operations', (req, res) => {
 router.get('/operations/:id', (req, res) => {
   const { currency, fx } = q(req);
   res.json(buildOperationDetail(userId(res), Number(req.params.id), currency, fx));
+});
+
+// Agregar o cambiar la justificación después (por ejemplo, en operaciones importadas del broker)
+router.put('/operations/:id/note', (req, res) => {
+  const note = readNote(req.body ?? {});
+  const changed = run(
+    'UPDATE operations SET note_title = ?, note_body = ?, note_link = ? WHERE id = ? AND user_id = ?',
+    note.note_title,
+    note.note_body,
+    note.note_link,
+    Number(req.params.id),
+    userId(res),
+  ).changes;
+  if (!changed) throw new HttpError(404, 'Operación no encontrada');
+  res.status(204).end();
 });
 
 router.delete('/operations/:id', (req, res) => {

@@ -53,7 +53,8 @@ export function JournalPage() {
         <h1 className="text-xl font-semibold">Diario de decisiones</h1>
         <p className="mt-1 text-sm text-muted">
           Qué hizo el precio 30, 90 y 180 días después de cada compra y venta. Una compra es acierto si a los 90 días el precio subió; una
-          venta, si bajó. Movimientos menores al 2% cuentan como neutrales.
+          venta, si bajó. Movimientos menores al 2% cuentan como neutrales. Los cambios se miden en dólares, aunque veas la app en pesos:
+          así la inflación no hace que toda compra parezca un acierto.
         </p>
       </div>
 

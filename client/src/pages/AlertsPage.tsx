@@ -37,7 +37,8 @@ export function AlertsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Alertas de precio</h1>
-        <p className="mt-1 text-sm text-muted">Te avisamos cuando un activo cruza el precio que elegiste. Los precios se revisan cada 15 minutos.</p>
+        <p className="mt-1 text-sm text-muted">Te avisamos cuando un activo cruza el precio que elegiste. Los precios se revisan mientras la app está prendida: con el mercado abierto
+          (lunes a viernes de 11 a 17), como mucho cada 15 minutos.</p>
       </div>
 
       <form

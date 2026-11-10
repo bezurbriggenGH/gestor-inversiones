@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type History, type PortfolioPosition } from '../api';
 import { DATA_KEYS, useHistory, usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
-import { money, num, pct, tone } from '../format';
+import { capitalize, dayLabel, latestPriceDate, money, num, pct, tone } from '../format';
 import { Button, ErrorBox, Loading, Triangle } from '../components/ui';
 import { AddAssetDialog } from '../components/AddAssetDialog';
 import { LineChart, type ChartLine } from '../components/LineChart';
@@ -61,7 +61,7 @@ function AssetCard({ p, deleting, onDelete }: { p: PortfolioPosition; deleting: 
             <span className="rounded bg-bg px-1.5 py-0.5 text-[10px] text-muted">{p.type === 'ACCION' ? 'Acción' : 'CEDEAR'}</span>
           </div>
           <div className="tabular mt-1 flex items-center justify-center gap-1 text-xs">
-            <span className="text-muted">hoy</span>
+            <span className="text-muted">{dayLabel(p.priceDate)}</span>
             <span className={tone(p.dayChangePct)}>{pct(p.dayChangePct)}</span>
             <Triangle value={p.dayChangePct} />
           </div>
@@ -72,11 +72,18 @@ function AssetCard({ p, deleting, onDelete }: { p: PortfolioPosition; deleting: 
           )}
         </div>
         <div className="tabular flex items-center justify-between text-sm">
-          <span className="text-muted">{hasPosition ? money(p.marketValue, currency) : 'Sin tenencia'}</span>
-          {hasPosition && (
-            <span className={`flex items-center gap-1 font-medium ${tone(p.unrealizedPct)}`}>
+          <span className="text-muted">{hasPosition ? money(p.marketValue, currency) : 'Ya no tenés'}</span>
+          {hasPosition ? (
+            <span className={`flex items-center gap-1 font-medium ${tone(p.unrealizedPct)}`} title="Ganancia en lo que tenés hoy">
               {pct(p.unrealizedPct)} <Triangle value={p.unrealizedPct} />
             </span>
+          ) : (
+            // Lo que ganaste o perdiste con todas las operaciones de este activo
+            p.totalGain !== 0 && (
+              <span className={`font-medium ${tone(p.totalGain)}`} title="Resultado final de todas tus operaciones">
+                resultado {money(p.totalGain, currency, true)}
+              </span>
+            )
           )}
         </div>
       </Link>
@@ -108,12 +115,17 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-line">
             <th className={th}>Activo</th>
-            <th className={`${th} hidden text-right sm:table-cell`}>Hoy</th>
+            <th className={`${th} hidden text-right sm:table-cell`}>{capitalize(dayLabel(latestPriceDate(positions)))}</th>
             <th className={`${th} hidden text-right md:table-cell`}>Cantidad</th>
             <th className={`${th} hidden text-right lg:table-cell`}>Precio</th>
             <th className={`${th} text-right`}>Valor</th>
             <th className={`${th} hidden text-right sm:table-cell`}>Peso</th>
-            <th className={`${th} text-right`}>Ganancia</th>
+            <th className={`${th} text-right`} title="Lo que vas ganando o perdiendo con lo que tenés hoy (lo mismo que muestra el broker)">
+              Ganancia en lo que tenés
+            </th>
+            <th className={`${th} hidden text-right md:table-cell`} title="Incluye también las ventas ya hechas y los dividendos">
+              Resultado total
+            </th>
             {deleting && <th className={th}><span className="sr-only">Eliminar</span></th>}
           </tr>
         </thead>
@@ -136,7 +148,7 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
                 <td className={`hidden px-2 py-2.5 sm:px-3 text-right sm:table-cell ${tone(p.dayChangePct)}`}>{pct(p.dayChangePct)}</td>
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right md:table-cell">{hasPosition ? num(p.quantity) : '—'}</td>
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right lg:table-cell">{money(p.price, currency)}</td>
-                <td className="px-2 py-2.5 sm:px-3 text-right">{hasPosition ? money(p.marketValue, currency) : <span className="text-muted">Sin tenencia</span>}</td>
+                <td className="px-2 py-2.5 sm:px-3 text-right">{hasPosition ? money(p.marketValue, currency) : <span className="text-muted">Ya no tenés</span>}</td>
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right text-muted sm:table-cell">{hasPosition ? pct(p.weight).replace('+', '') : '—'}</td>
                 <td className="px-2 py-2.5 sm:px-3 text-right">
                   {hasPosition ? (
@@ -147,6 +159,9 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
                   ) : (
                     <span className="text-muted">—</span>
                   )}
+                </td>
+                <td className={`hidden px-2 py-2.5 sm:px-3 text-right md:table-cell ${tone(p.totalGain)}`}>
+                  {p.totalGain !== 0 ? money(p.totalGain, currency, true) : <span className="text-muted">—</span>}
                 </td>
                 {deleting && (
                   <td className="px-2 py-2.5 sm:px-3 text-right">
@@ -163,12 +178,13 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
 }
 
 type View = 'tarjetas' | 'lista';
-type Sort = 'valor' | 'ganancia' | 'hoy' | 'ticker';
+type Sort = 'valor' | 'ganancia' | 'resultado' | 'hoy' | 'ticker';
 
 const SORTS: Record<Sort, { label: string; compare: (a: PortfolioPosition, b: PortfolioPosition) => number }> = {
   valor: { label: 'Mayor tenencia', compare: (a, b) => b.marketValue - a.marketValue },
-  ganancia: { label: 'Mayor ganancia %', compare: (a, b) => b.unrealizedPct - a.unrealizedPct },
-  hoy: { label: 'Mayor suba hoy', compare: (a, b) => b.dayChangePct - a.dayChangePct },
+  ganancia: { label: 'Mayor ganancia % (lo que tenés)', compare: (a, b) => b.unrealizedPct - a.unrealizedPct },
+  resultado: { label: 'Mayor resultado total', compare: (a, b) => b.totalGain - a.totalGain },
+  hoy: { label: 'Mayor suba del día', compare: (a, b) => b.dayChangePct - a.dayChangePct },
   ticker: { label: 'Ticker (A-Z)', compare: (a, b) => a.ticker.localeCompare(b.ticker) },
 };
 
@@ -200,7 +216,7 @@ export function PortfolioPage() {
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [view, setView] = usePref<View>('cartera.vista', ['tarjetas', 'lista'], 'tarjetas');
-  const [sort, setSort] = usePref<Sort>('cartera.orden', ['valor', 'ganancia', 'hoy', 'ticker'], 'valor');
+  const [sort, setSort] = usePref<Sort>('cartera.orden', ['valor', 'ganancia', 'resultado', 'hoy', 'ticker'], 'valor');
   const [showEmpty, setShowEmpty] = usePref<'si' | 'no'>('cartera.sinTenencia', ['si', 'no'], 'no');
   const qc = useQueryClient();
 

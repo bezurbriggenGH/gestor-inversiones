@@ -21,7 +21,14 @@ const PRESETS = [
 ];
 // Cómo se nombra cada alternativa dentro de una frase
 const BEAT: Record<SimAlternative, string> = { activo: '', dolar: 'al dólar', plazofijo: 'al plazo fijo', inflacion: 'a la inflación', colchon: 'a guardar los pesos' };
-const LOST: Record<SimAlternative, string> = { activo: '', dolar: 'el dólar', plazofijo: 'el plazo fijo', inflacion: 'la inflación', colchon: 'guardar los pesos' };
+const LOST: Record<SimAlternative, string> = {
+  activo: '',
+  dolar: 'el dólar',
+  plazofijo: 'el plazo fijo',
+  // La inflación no es algo en lo que se invierta: lo que "convenía" era mantener la plata ajustada por inflación
+  inflacion: 'mantener la plata ajustada por inflación (UVA)',
+  colchon: 'guardar los pesos',
+};
 
 const EXAMPLES = ['GGAL', 'YPFD', 'MELI', 'SPY', 'AAPL', 'KO'];
 
@@ -77,7 +84,7 @@ function Result({ sim }: { sim: Simulation }) {
           <span className={`tabular ${tone(asset.return)}`}>({pct(asset.return)})</span>.
         </p>
         <p className="mt-2 text-sm text-muted">
-          {beat.length > 0 && <>Le ganó a {joinNames(beat)}. </>}
+          {beat.length > 0 && <>Le ganó {joinNames(beat)}. </>}
           {lost.length > 0 && <>{beat.length > 0 ? 'Pero convenía más' : 'Convenía más'} {joinNames(lost)}. </>}
           {asset.annual != null && (
             <>

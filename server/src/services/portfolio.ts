@@ -305,13 +305,19 @@ function positionFor(userId: number, ticker: string, conv: Converter) {
 }
 
 export function convertOp(op: OperationRow, conv: Converter, fx: DateSeries, realizedByOp: Map<number, number>) {
+  const totalConv = conv(opTotal(op), op.date);
+  const realized = realizedByOp.get(op.id) ?? null;
+  // En una venta: resultado sobre lo que habían costado las acciones vendidas
+  // (lo cobrado neto − el resultado = el costo de lo vendido, a precio promedio)
+  const soldCost = op.type === 'VENTA' && realized != null ? totalConv - realized : 0;
   return {
     ...op,
     fxRate: fx.empty ? null : fx.at(op.date),
     priceConv: conv(op.price, op.date),
     feesConv: conv(op.fees, op.date),
-    totalConv: conv(opTotal(op), op.date),
-    realized: realizedByOp.get(op.id) ?? null,
+    totalConv,
+    realized,
+    realizedPct: soldCost > 0 ? realized! / soldCost : null,
   };
 }
 

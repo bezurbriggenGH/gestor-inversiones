@@ -83,6 +83,8 @@ export interface Operation {
   feesConv: number;
   totalConv: number;
   realized: number | null;
+  /** En una venta: el resultado sobre lo que habían costado las acciones vendidas. */
+  realizedPct: number | null;
   /** Si hubo un split después: por cuánto se multiplicó la cantidad (1 = sin cambios). */
   splitFactor?: number;
 }
@@ -309,6 +311,8 @@ export const api = {
   addOperation: (t: string, op: NewOperation) => post<{ id: number }>(`/assets/${t}/operations`, op),
   operation: (id: number, c: Currency, k: FxKind) => request<OperationDetail>(`/operations/${id}?${q(c, k)}`),
   deleteOperation: (id: number) => del(`/operations/${id}`),
+  updateNote: (id: number, note: { note_title: string; note_body: string; note_link: string }) =>
+    request<void>(`/operations/${id}/note`, { method: 'PUT', body: JSON.stringify(note) }),
 
   simulate: (ticker: string, amount: number, date: string, c: Currency, k: FxKind) =>
     request<Simulation>(`/simulate?ticker=${encodeURIComponent(ticker)}&amount=${amount}&date=${date}&${q(c, k)}`),

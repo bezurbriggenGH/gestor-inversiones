@@ -84,6 +84,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/cartera.test.ts` | Precio promedio, ganancias, comisiones, dividendos, dólares, ventas de más |
 | `server/test/historia.test.ts` | TIR, rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
+| `server/test/diario.test.ts` | Resultado de cada venta y que el Diario de decisiones juzgue en dólares |
 | `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña |
 
 ## Tecnologías

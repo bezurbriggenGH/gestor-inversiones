@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { ResponsiveContainer, Treemap } from 'recharts';
 import type { PortfolioPosition } from '../api';
 import { useSettings } from '../settings';
-import { money, pct } from '../format';
+import { capitalize, dayLabel, latestPriceDate, money, pct } from '../format';
 
 type Mode = 'day' | 'total';
 const MODES: { key: Mode; label: string; scale: number }[] = [
@@ -99,7 +99,7 @@ export function PortfolioTreemap({ positions }: { positions: PortfolioPosition[]
               onClick={() => setMode(m.key)}
               className={`rounded-md px-2.5 py-1 text-xs transition ${mode === m.key ? 'bg-card text-text' : 'text-muted hover:text-text'}`}
             >
-              {m.label}
+              {m.key === 'day' ? capitalize(dayLabel(latestPriceDate(positions))) : m.label}
             </button>
           ))}
         </div>
