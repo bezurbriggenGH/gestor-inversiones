@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Operation, type OperationType } from '../api';
 import { DATA_KEYS, useJournal, useOperation } from '../hooks';
@@ -119,18 +119,26 @@ export function OperationPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      {/* El título dice qué operación es: "Venta de AAPL", y de qué día */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-2xl text-muted hover:text-text" aria-label="Volver">
           ←
         </button>
-        <h1 className="flex-1 rounded-md bg-card py-1.5 text-center text-sm">Historial · {data.asset.ticker}</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold">
+            <span className={TYPE_STYLE[op.type]}>{{ COMPRA: 'Compra', VENTA: 'Venta', DIVIDENDO: 'Dividendo' }[op.type]}</span>{' '}
+            de{' '}
+            <Link to={`/activo/${data.asset.ticker}`} className="hover:underline">
+              {data.asset.ticker}
+            </Link>
+          </h1>
+          <p className="truncate text-sm text-muted">
+            {date(op.date)} · {data.asset.name}
+          </p>
+        </div>
       </div>
 
       <section className="grid gap-6 px-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Row label="Fecha">{date(op.date)}</Row>
-        <Row label="Tipo de operación">
-          <span className={TYPE_STYLE[op.type]}>{{ COMPRA: 'Compra', VENTA: 'Venta', DIVIDENDO: 'Dividendo' }[op.type]}</span>
-        </Row>
         <Row label={isDividend ? 'Acciones' : 'Cantidad'}>{num(op.quantity)}</Row>
         <Row label={isDividend ? 'Dividendo por acción' : 'Precio unitario'}>
           {money(op.priceConv, currency)}

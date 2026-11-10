@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
-import type { OperationType, PendingDividend } from '../api';
-import { useAsset } from '../hooks';
+import { Link, useNavigate, useParams } from 'react-router';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, type OperationType, type PendingDividend, type Position } from '../api';
+import { DATA_KEYS, useAsset } from '../hooks';
 import { useSettings } from '../settings';
 import { capitalize, date, dayLabel, money, num, pct, tone } from '../format';
 import { PriceChart } from '../components/PriceChart';
@@ -60,6 +61,53 @@ function PendingDividends({ items, onRegister }: { items: PendingDividend[]; onR
   );
 }
 
+/**
+ * Eliminar el activo, al final de su página (donde se ve todo lo que se pierde).
+ * El aviso dice qué se pierde en cada caso: borrar un activo borra toda su historia.
+ */
+function DeleteAsset({ ticker, position: p }: { ticker: string; position: Position }) {
+  const { currency } = useSettings();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => api.deleteAsset(ticker),
+    onSuccess: () => {
+      DATA_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+      navigate('/', { replace: true });
+    },
+  });
+
+  function confirmDelete() {
+    const lines = [`¿Eliminar ${ticker}?`, ''];
+    if (p.quantity > 0) {
+      lines.push(
+        `Todavía tenés ${num(p.quantity)} ${ticker} por ${money(p.marketValue, currency)}. Van a desaparecer de tu cartera, de su valor y de la evolución, aunque en el broker los sigas teniendo.`,
+        '',
+        'Si los vendiste, en vez de eliminar el activo registrá la venta.',
+      );
+    } else if (p.totalGain !== 0) {
+      lines.push(
+        `Ya no tenés ${ticker}, pero su resultado (${money(p.totalGain, currency, true)}) es parte de tu ganancia total y dejaría de contar.`,
+        '',
+        'Los activos que ya no tenés están ocultos en la cartera: no hace falta eliminarlos.',
+      );
+    }
+    lines.push('', 'Se borran todas sus operaciones, fotos y alertas. No se puede deshacer.');
+    if (window.confirm(lines.join('\n'))) remove.mutate();
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-line pt-6">
+      <ErrorBox error={remove.error} />
+      <div>
+        <Button variant="danger" onClick={confirmDelete} disabled={remove.isPending} className="text-xs">
+          Eliminar {ticker} de mi cartera
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AssetPage() {
   const { ticker = '' } = useParams();
   const { currency } = useSettings();
@@ -82,15 +130,68 @@ export function AssetPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
+      {/* Encabezado: qué activo es y qué se puede hacer con él */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <Link to="/" className="text-2xl text-muted hover:text-text" aria-label="Volver">
           ←
         </Link>
-        <h1 className="flex-1 text-xl font-semibold">{asset.name}</h1>
-        <Button onClick={() => setAlerting(true)} className="text-xs">
-          🔔 Crear alerta
-        </Button>
+        <div className="mr-auto min-w-0">
+          <h1 className="flex items-baseline gap-2 text-xl font-semibold">
+            {asset.ticker}
+            <span className="rounded bg-card px-1.5 py-0.5 text-[11px] font-normal text-muted">
+              {asset.type === 'ACCION' ? 'Acción argentina' : 'CEDEAR'}
+            </span>
+          </h1>
+          <p className="truncate text-sm text-muted">{asset.name}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => setForm({ type: 'COMPRA' })} className="text-xs">
+            Registrar compra
+          </Button>
+          {p.quantity > 0 && (
+            <Button onClick={() => setForm({ type: 'VENTA' })} className="text-xs">
+              Registrar venta
+            </Button>
+          )}
+          <Button onClick={() => setForm({ type: 'DIVIDENDO' })} className="text-xs">
+            Dividendo
+          </Button>
+          <Button onClick={() => setAlerting(true)} className="text-xs" title="Avisarme cuando el precio cruce un valor">
+            🔔 Alerta
+          </Button>
+        </div>
       </div>
+
+      {/* Tu posición: lo primero que se quiere saber al entrar */}
+      {p.quantity > 0 ? (
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatBox
+            label="Valor de lo que tenés"
+            value={money(p.marketValue, currency)}
+            sub={`${num(p.quantity)} × ${money(p.price, currency)} · promedio ${money(p.avgCost, currency)}`}
+          />
+          <StatBox
+            label="Ganancia en lo que tenés"
+            value={money(p.unrealized, currency, true)}
+            sub={`${pct(p.unrealizedPct)} · te costó ${money(p.costBasis, currency)}`}
+            cls={tone(p.unrealized)}
+          />
+          <StatBox label="Resultado total" value={money(p.totalGain, currency, true)} sub={totalDetail} cls={tone(p.totalGain)} />
+          <StatBox label={capitalize(dayLabel(p.priceDate))} value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
+        </section>
+      ) : (
+        <p className="rounded-lg bg-panel px-4 py-3 text-sm">
+          {operations.length === 0 ? (
+            <span className="text-muted">Todavía no registraste operaciones. Cargá tu primera compra para seguir tu resultado.</span>
+          ) : (
+            <>
+              Ya no tenés {asset.ticker}. Resultado final de todas tus operaciones:{' '}
+              <span className={`tabular font-semibold ${tone(p.totalGain)}`}>{money(p.totalGain, currency, true)}</span>
+              {totalDetail && <span className="text-muted"> ({totalDetail})</span>}
+            </>
+          )}
+        </p>
+      )}
 
       <PriceChart series={data.series} operations={tradeOps} currency={currency} avgCost={p.quantity > 0 ? p.avgCost : 0} />
 
@@ -101,64 +202,13 @@ export function AssetPage() {
         }
       />
 
-      <section className="grid gap-4 rounded-xl bg-panel p-5 sm:grid-cols-[auto_1fr]">
-        <div className="flex min-w-40 flex-col items-center justify-center rounded-lg bg-card px-6 py-4 text-center">
-          <span className="text-2xl font-medium">{asset.ticker}</span>
-          <span className="text-xs text-muted">{asset.type === 'ACCION' ? 'Acción argentina' : 'CEDEAR'}</span>
-          <span className="mt-2 text-sm">Cant. {num(p.quantity)}</span>
-          <span className="tabular text-sm">{money(p.price, currency)}</span>
-          {p.quantity > 0 && <span className="tabular text-xs text-muted">promedio {money(p.avgCost, currency)}</span>}
-        </div>
-
-        <div className="flex flex-col justify-center gap-3 sm:max-w-56">
-          <Button onClick={() => setForm({ type: 'COMPRA' })} className="min-w-44">
-            Registrar compra
-          </Button>
-          <Button onClick={() => setForm({ type: 'VENTA' })} disabled={p.quantity <= 0} className="min-w-44">
-            Registrar venta
-          </Button>
-          <button onClick={() => setForm({ type: 'DIVIDENDO' })} className="text-xs text-muted hover:text-text">
-            + Registrar dividendo
-          </button>
-        </div>
-
-        {p.quantity > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:col-span-2 md:grid-cols-4">
-            <StatBox label={capitalize(dayLabel(p.priceDate))} value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
-            <StatBox label="Valor de lo que tenés" value={money(p.marketValue, currency)} sub={`${num(p.quantity)} × ${money(p.price, currency)}`} />
-            <StatBox
-              label="Ganancia en lo que tenés"
-              value={money(p.unrealized, currency, true)}
-              sub={`${pct(p.unrealizedPct)} · te costó ${money(p.costBasis, currency)}`}
-              cls={tone(p.unrealized)}
-            />
-            <StatBox
-              label="Resultado total"
-              value={money(p.totalGain, currency, true)}
-              sub={totalDetail}
-              cls={tone(p.totalGain)}
-            />
-          </div>
-        ) : (
-          <p className="rounded-lg bg-card px-4 py-3 text-sm sm:col-span-2">
-            {operations.length === 0 ? (
-              <span className="text-muted">Todavía no registraste operaciones. Cargá tu primera compra para seguir tu resultado.</span>
-            ) : (
-              <>
-                Ya no tenés {asset.ticker}. Resultado final de todas tus operaciones:{' '}
-                <span className={`tabular font-semibold ${tone(p.totalGain)}`}>{money(p.totalGain, currency, true)}</span>
-                {totalDetail && <span className="text-muted"> ({totalDetail})</span>}
-              </>
-            )}
-          </p>
-        )}
-      </section>
-
       <AssetStats series={data.series} currency={currency} avgCost={p.quantity > 0 ? p.avgCost : 0} type={asset.type} />
 
       {data.cedear && <CedearPanel ticker={asset.ticker} info={data.cedear} />}
 
       <OperationHistory operations={operations} currency={currency} />
+
+      <DeleteAsset ticker={asset.ticker} position={p} />
 
       {form && (
         <OperationForm ticker={asset.ticker} type={form.type} holding={p.quantity} prefill={form.prefill} onClose={() => setForm(null)} />

@@ -40,7 +40,7 @@ export function OperationHistory({ operations, currency }: { operations: Operati
 
   return (
     <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
-      <h2 className="mb-1 rounded-md bg-card py-1.5 text-center text-sm">Historial</h2>
+      <h2 className="mb-1 font-medium">Historial de operaciones</h2>
 
       {operations.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted">Todavía no registraste operaciones.</p>

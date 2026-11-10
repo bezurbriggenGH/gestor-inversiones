@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type History, type PortfolioPosition } from '../api';
-import { DATA_KEYS, useHistory, usePortfolio } from '../hooks';
+import type { History, PortfolioPosition } from '../api';
+import { useHistory, usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
-import { capitalize, dayLabel, latestPriceDate, money, num, pct, tone } from '../format';
+import { capitalize, dayLabel, latestPriceDate, money, num, pct, share, shortDayLabel, tone } from '../format';
 import { Button, ErrorBox, Loading, Triangle } from '../components/ui';
 import { AddAssetDialog } from '../components/AddAssetDialog';
 import { LineChart, type ChartLine } from '../components/LineChart';
@@ -44,68 +43,61 @@ function Evolution({ history }: { history: History }) {
   );
 }
 
-function AssetCard({ p, deleting, onDelete }: { p: PortfolioPosition; deleting: boolean; onDelete: () => void }) {
+/**
+ * Tarjeta de un activo: solo lo esencial para comparar de un vistazo.
+ * El detalle completo (cantidad, promedio, resultado total, brecha CCL…) está en la página del activo.
+ */
+function AssetCard({ p }: { p: PortfolioPosition }) {
   const { currency } = useSettings();
   const hasPosition = p.quantity > 0;
   return (
-    <div className="relative">
+    <div>
       <Link
         to={`/activo/${p.ticker}`}
-        className={`flex h-36 flex-col justify-between rounded-xl bg-card p-5 transition hover:bg-card-hover ${
-          deleting ? 'pointer-events-none opacity-60' : ''
-        }`}
+        className={`tabular flex flex-col gap-3 rounded-xl p-5 transition ${hasPosition ? 'bg-card hover:bg-card-hover' : 'bg-panel hover:bg-card'}`}
       >
-        <div className="text-center">
-          <div className="flex items-baseline justify-center gap-2">
-            <span className="text-2xl font-medium">{p.ticker}</span>
-            <span className="rounded bg-bg px-1.5 py-0.5 text-[10px] text-muted">{p.type === 'ACCION' ? 'Acción' : 'CEDEAR'}</span>
-          </div>
-          <div className="tabular mt-1 flex items-center justify-center gap-1 text-xs">
-            <span className="text-muted">{dayLabel(p.priceDate)}</span>
-            <span className={tone(p.dayChangePct)}>{pct(p.dayChangePct)}</span>
-            <Triangle value={p.dayChangePct} />
-          </div>
-          {p.cedearGap != null && (
-            <p className="tabular mt-0.5 text-[11px] text-muted" title="Diferencia entre el dólar implícito del CEDEAR y el CCL">
-              brecha CCL <span className={tone(-p.cedearGap)}>{pct(p.cedearGap)}</span>
-            </p>
-          )}
-        </div>
-        <div className="tabular flex items-center justify-between text-sm">
-          <span className="text-muted">{hasPosition ? money(p.marketValue, currency) : 'Ya no tenés'}</span>
-          {hasPosition ? (
-            <span className={`flex items-center gap-1 font-medium ${tone(p.unrealizedPct)}`} title="Ganancia en lo que tenés hoy">
-              {pct(p.unrealizedPct)} <Triangle value={p.unrealizedPct} />
-            </span>
-          ) : (
-            // Lo que ganaste o perdiste con todas las operaciones de este activo
-            p.totalGain !== 0 && (
-              <span className={`font-medium ${tone(p.totalGain)}`} title="Resultado final de todas tus operaciones">
-                resultado {money(p.totalGain, currency, true)}
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-lg font-medium">{p.ticker}</span>
+            {hasPosition ? (
+              <span className="text-xs text-muted" title="Peso en tu cartera">
+                {share(p.weight)}
               </span>
-            )
-          )}
+            ) : (
+              <span className="text-xs text-muted">vendido</span>
+            )}
+          </div>
+          <p className="truncate text-xs text-muted" title={p.name}>
+            {p.name}
+          </p>
         </div>
+
+        {hasPosition ? (
+          <>
+            <span className="text-xl font-semibold">{money(p.marketValue, currency, false, true)}</span>
+            <div className="flex items-center justify-between text-sm">
+              <span className={`flex items-center gap-1 font-medium ${tone(p.unrealizedPct)}`} title="Ganancia en lo que tenés hoy">
+                {pct(p.unrealizedPct)} <Triangle value={p.unrealizedPct} />
+              </span>
+              <span className="text-xs text-muted" title={`Variación del precio ${dayLabel(p.priceDate)}`}>
+                {shortDayLabel(p.priceDate)} <span className={tone(p.dayChangePct)}>{pct(p.dayChangePct)}</span>
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Lo que ganaste o perdiste con todas las operaciones de este activo */}
+            <span className={`text-xl font-semibold ${tone(p.totalGain)}`}>{money(p.totalGain, currency, true, true)}</span>
+            <span className="text-sm text-muted">resultado final</span>
+          </>
+        )}
       </Link>
-      {deleting && <DeleteButton ticker={p.ticker} onClick={onDelete} className="absolute -right-2 -top-2" />}
     </div>
   );
 }
 
-function DeleteButton({ ticker, onClick, className = '' }: { ticker: string; onClick: () => void; className?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`grid h-8 w-8 place-items-center rounded-full bg-down text-sm font-bold text-white shadow-lg hover:scale-105 ${className}`}
-      aria-label={`Eliminar ${ticker}`}
-    >
-      ✕
-    </button>
-  );
-}
-
 /** Vista compacta: una fila por activo, pensada para carteras con muchos activos. */
-function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPosition[]; deleting: boolean; onDelete: (p: PortfolioPosition) => void }) {
+function AssetTable({ positions }: { positions: PortfolioPosition[] }) {
   const { currency } = useSettings();
   const navigate = useNavigate();
   const th = 'px-2 py-2.5 font-normal sm:px-3';
@@ -126,7 +118,6 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
             <th className={`${th} hidden text-right md:table-cell`} title="Incluye también las ventas ya hechas y los dividendos">
               Resultado total
             </th>
-            {deleting && <th className={th}><span className="sr-only">Eliminar</span></th>}
           </tr>
         </thead>
         <tbody className="tabular">
@@ -135,8 +126,8 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
             return (
               <tr
                 key={p.ticker}
-                onClick={() => !deleting && navigate(`/activo/${p.ticker}`)}
-                className={`border-b border-line/60 last:border-0 ${deleting ? '' : 'cursor-pointer hover:bg-card'}`}
+                onClick={() => navigate(`/activo/${p.ticker}`)}
+                className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-card"
               >
                 <td className="px-2 py-2.5 sm:px-3">
                   <Link to={`/activo/${p.ticker}`} onClick={(e) => e.stopPropagation()} className="flex items-baseline gap-2">
@@ -149,7 +140,7 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right md:table-cell">{hasPosition ? num(p.quantity) : '—'}</td>
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right lg:table-cell">{money(p.price, currency)}</td>
                 <td className="px-2 py-2.5 sm:px-3 text-right">{hasPosition ? money(p.marketValue, currency) : <span className="text-muted">Ya no tenés</span>}</td>
-                <td className="hidden px-2 py-2.5 sm:px-3 text-right text-muted sm:table-cell">{hasPosition ? pct(p.weight).replace('+', '') : '—'}</td>
+                <td className="hidden px-2 py-2.5 sm:px-3 text-right text-muted sm:table-cell">{hasPosition ? share(p.weight) : '—'}</td>
                 <td className="px-2 py-2.5 sm:px-3 text-right">
                   {hasPosition ? (
                     <>
@@ -163,11 +154,6 @@ function AssetTable({ positions, deleting, onDelete }: { positions: PortfolioPos
                 <td className={`hidden px-2 py-2.5 sm:px-3 text-right md:table-cell ${tone(p.totalGain)}`}>
                   {p.totalGain !== 0 ? money(p.totalGain, currency, true) : <span className="text-muted">—</span>}
                 </td>
-                {deleting && (
-                  <td className="px-2 py-2.5 sm:px-3 text-right">
-                    <DeleteButton ticker={p.ticker} onClick={() => onDelete(p)} className="ml-auto h-7 w-7" />
-                  </td>
-                )}
               </tr>
             );
           })}
@@ -211,40 +197,12 @@ function usePref<T extends string>(key: string, allowed: readonly T[], fallback:
 }
 
 export function PortfolioPage() {
-  const { currency } = useSettings();
   const { data, isLoading, error } = usePortfolio();
   const history = useHistory();
   const [adding, setAdding] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [view, setView] = usePref<View>('cartera.vista', ['tarjetas', 'lista'], 'tarjetas');
   const [sort, setSort] = usePref<Sort>('cartera.orden', ['valor', 'ganancia', 'resultado', 'hoy', 'ticker'], 'valor');
   const [showEmpty, setShowEmpty] = usePref<'si' | 'no'>('cartera.sinTenencia', ['si', 'no'], 'no');
-  const qc = useQueryClient();
-
-  const remove = useMutation({
-    mutationFn: api.deleteAsset,
-    onSuccess: () => DATA_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey })),
-  });
-
-  // El aviso dice qué se pierde en cada caso: borrar un activo borra toda su historia
-  function confirmDelete(p: PortfolioPosition) {
-    const lines = [`¿Eliminar ${p.ticker}?`, ''];
-    if (p.quantity > 0) {
-      lines.push(
-        `Todavía tenés ${num(p.quantity)} ${p.ticker} por ${money(p.marketValue, currency)}. Van a desaparecer de tu cartera, de su valor y de la evolución, aunque en el broker los sigas teniendo.`,
-        '',
-        'Si los vendiste, en vez de eliminar el activo registrá la venta.',
-      );
-    } else if (p.totalGain !== 0) {
-      lines.push(
-        `Ya no tenés ${p.ticker}, pero su resultado (${money(p.totalGain, currency, true)}) es parte de tu ganancia total y dejaría de contar.`,
-        '',
-        'Los activos que ya no tenés están ocultos en la cartera: no hace falta eliminarlos.',
-      );
-    }
-    lines.push('', 'Se borran todas sus operaciones, fotos y alertas. No se puede deshacer.');
-    if (window.confirm(lines.join('\n'))) remove.mutate(p.ticker);
-  }
 
   const all = data?.positions ?? [];
   const emptyCount = all.filter((p) => p.quantity <= 0).length;
@@ -268,22 +226,26 @@ export function PortfolioPage() {
           Alguna fuente de datos no respondió; se muestran los últimos precios guardados.
         </p>
       )}
-      <ErrorBox error={remove.error} />
-
       {data.positions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-line p-10 text-center">
-          <p className="text-lg">Todavía no tenés activos</p>
-          <p className="mt-1 text-sm text-muted">
-            Agregá una acción argentina (GGAL, YPFD…) o un CEDEAR (MELI, AAPL…), o{' '}
-            <Link to="/importar" className="text-text underline underline-offset-4">
-              importá tus operaciones
-            </Link>
-            .
-          </p>
+        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-line p-10 text-center">
+          <div>
+            <p className="text-lg">Todavía no tenés activos</p>
+            <p className="mt-1 text-sm text-muted">
+              Agregá una acción argentina (GGAL, YPFD…) o un CEDEAR (MELI, AAPL…), o{' '}
+              <Link to="/importar" className="text-text underline underline-offset-4">
+                importá tus operaciones
+              </Link>
+              .
+            </p>
+          </div>
+          <Button variant="primary" onClick={() => setAdding(true)}>
+            Agregar activo
+          </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
+            <h2 className="mr-auto text-base font-medium">Tus activos</h2>
             <div className="flex rounded-lg bg-panel p-1" role="group" aria-label="Forma de ver los activos">
               {(['tarjetas', 'lista'] as const).map((v) => (
                 <button
@@ -314,33 +276,25 @@ export function PortfolioPage() {
             {emptyCount > 0 && emptyCount < all.length && (
               <label className="flex cursor-pointer items-center gap-2 text-muted">
                 <input id="cartera-sin-tenencia" type="checkbox" checked={showEmpty === 'si'} onChange={(e) => setShowEmpty(e.target.checked ? 'si' : 'no')} />
-                Mostrar sin tenencia ({emptyCount})
+                Mostrar vendidos ({emptyCount})
               </label>
             )}
+            <Button onClick={() => setAdding(true)} className="text-xs">
+              + Agregar activo
+            </Button>
           </div>
 
           {view === 'lista' ? (
-            <AssetTable positions={positions} deleting={deleting} onDelete={confirmDelete} />
+            <AssetTable positions={positions} />
           ) : (
-            <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {positions.map((p) => (
-                <AssetCard key={p.ticker} p={p} deleting={deleting} onDelete={() => confirmDelete(p)} />
+                <AssetCard key={p.ticker} p={p} />
               ))}
             </section>
           )}
         </div>
       )}
-
-      <div className="flex flex-wrap gap-4">
-        <Button onClick={() => setAdding(true)} className="min-w-44">
-          Agregar activo
-        </Button>
-        {data.positions.length > 0 && (
-          <Button onClick={() => setDeleting((d) => !d)} variant={deleting ? 'danger' : 'default'} className="min-w-44">
-            {deleting ? 'Listo' : 'Eliminar activo'}
-          </Button>
-        )}
-      </div>
 
       {history.data && <Evolution history={history.data} />}
       {history.data && history.data.monthly.length > 0 && <MonthlyReturns months={history.data.monthly} />}

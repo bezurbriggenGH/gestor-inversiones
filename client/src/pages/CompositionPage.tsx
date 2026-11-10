@@ -1,11 +1,12 @@
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Link } from 'react-router';
 import { usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
-import { money, pct } from '../format';
+import { money, share } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
 import { PortfolioTreemap } from '../components/PortfolioTreemap';
 
-const COLORS = ['#7c6bb0', '#5a9bb0', '#4f9d69', '#c49a4a', '#b0607f', '#5b7fb8', '#8fae5a', '#c07a4a', '#4a9e93', '#a77bb0'];
+// Un color por tipo de activo (no uno por activo: con muchos activos los colores se repetían)
+const TYPE_COLOR = { ACCION: '#5a9bb0', CEDEAR: '#7c6bb0' } as const;
 const CONCENTRATION_LIMIT = 0.35;
 
 export function CompositionPage() {
@@ -31,51 +32,38 @@ export function CompositionPage() {
 
       <PortfolioTreemap positions={rows} />
 
-      <section className="grid gap-6 rounded-xl bg-panel p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <div className="relative h-72">
-          <ResponsiveContainer>
-            <PieChart>
-              <Pie data={rows} dataKey="marketValue" nameKey="ticker" innerRadius="62%" outerRadius="95%" paddingAngle={2} stroke="none">
-                {rows.map((r, i) => (
-                  <Cell key={r.ticker} fill={COLORS[i % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(v) => money(Number(v), currency)}
-                contentStyle={{ background: '#1c1d1f', border: '1px solid #2a2b2e', borderRadius: 8 }}
-                itemStyle={{ color: '#e4e4e4' }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
-            <div>
-              <p className="text-xs text-muted">Total</p>
-              <p className="tabular font-semibold">{money(total, currency)}</p>
-            </div>
-          </div>
+      {/* Cuánto pesa cada activo. El color dice el tipo (el mismo de los recuadros de abajo). */}
+      <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-medium">Cuánto pesa cada activo</h2>
+          <p className="tabular text-sm text-muted">
+            {rows.length} activos · {money(total, currency, false, true)}
+          </p>
         </div>
-
-        <div className="flex flex-col gap-2">
-          {rows.map((r, i) => (
-            <div key={r.ticker} className="grid grid-cols-[auto_4rem_1fr_auto] items-center gap-3 text-sm">
-              <span className="h-3 w-3 rounded-sm" style={{ background: COLORS[i % COLORS.length] }} />
-              <span className="font-medium">{r.ticker}</span>
-              <div className="h-2 overflow-hidden rounded-full bg-card">
-                <div className="h-full rounded-full" style={{ width: `${r.weight * 100}%`, background: COLORS[i % COLORS.length] }} />
-              </div>
-              <span className="tabular w-36 text-right">
-                {pct(r.weight).replace('+', '')} <span className="text-muted">· {money(r.marketValue, currency)}</span>
-              </span>
+        {rows.map((r) => (
+          <Link
+            key={r.ticker}
+            to={`/activo/${r.ticker}`}
+            className="tabular grid grid-cols-[4.5rem_1fr_auto] items-center gap-3 rounded-md px-1 py-0.5 text-sm hover:bg-card sm:grid-cols-[4.5rem_1fr_9rem_3.5rem]"
+          >
+            <span className="font-medium">{r.ticker}</span>
+            <div className="h-2 overflow-hidden rounded-full bg-card">
+              <div className="h-full rounded-full" style={{ width: `${(r.weight / rows[0].weight) * 100}%`, background: TYPE_COLOR[r.type] }} />
             </div>
-          ))}
-        </div>
+            <span className="hidden text-right text-muted sm:block">{money(r.marketValue, currency, false, true)}</span>
+            <span className="text-right">{share(r.weight)}</span>
+          </Link>
+        ))}
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
         {byType.map((t) => (
           <div key={t.type} className="rounded-xl bg-panel p-5">
-            <p className="text-sm text-muted">{t.type === 'ACCION' ? 'Acciones argentinas' : 'CEDEARs'}</p>
-            <p className="tabular mt-1 text-xl font-semibold">{pct(t.weight).replace('+', '')}</p>
+            <p className="flex items-center gap-2 text-sm text-muted">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: TYPE_COLOR[t.type] }} />
+              {t.type === 'ACCION' ? 'Acciones argentinas' : 'CEDEARs'}
+            </p>
+            <p className="tabular mt-1 text-xl font-semibold">{share(t.weight)}</p>
             <p className="tabular text-sm text-muted">{money(t.value, currency)}</p>
             <p className="mt-2 text-xs text-muted">
               {t.type === 'ACCION'
@@ -88,7 +76,7 @@ export function CompositionPage() {
 
       {concentrated.length > 0 && (
         <p className="rounded-lg border border-[#b8964f]/30 bg-[#b8964f]/10 px-4 py-3 text-sm text-[#c9ab6a]">
-          Concentración alta: {concentrated.map((c) => `${c.ticker} (${pct(c.weight).replace('+', '')})`).join(', ')} supera el{' '}
+          Concentración alta: {concentrated.map((c) => `${c.ticker} (${share(c.weight)})`).join(', ')} supera el{' '}
           {CONCENTRATION_LIMIT * 100}% de la cartera. Si a esa empresa le va mal, afecta mucho al total.
         </p>
       )}

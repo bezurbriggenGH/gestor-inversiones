@@ -2,15 +2,20 @@ import type { Currency } from './api';
 
 const moneyFmt = new Map<string, Intl.NumberFormat>();
 
-export function money(v: number, currency: Currency, signed = false): string {
-  const key = `${currency}-${signed}`;
+/**
+ * Formatea plata. Con `compact`, sin centavos en montos de 100 o más: para vistas generales
+ * (como las tarjetas), donde los centavos no aportan y solo agregan ruido.
+ */
+export function money(v: number, currency: Currency, signed = false, compact = false): string {
+  const digits = compact && Math.abs(v) >= 100 ? 0 : 2;
+  const key = `${currency}-${signed}-${digits}`;
   let f = moneyFmt.get(key);
   if (!f) {
     f = new Intl.NumberFormat('es-AR', {
       style: 'currency',
       currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
       signDisplay: signed ? 'exceptZero' : 'auto',
     });
     moneyFmt.set(key, f);
@@ -18,13 +23,13 @@ export function money(v: number, currency: Currency, signed = false): string {
   return f.format(v);
 }
 
-const pctFmt = new Intl.NumberFormat('es-AR', {
-  style: 'percent',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-  signDisplay: 'exceptZero',
-});
-export const pct = (v: number) => pctFmt.format(v);
+const pctFmt = [0, 1, 2].map(
+  (d) => new Intl.NumberFormat('es-AR', { style: 'percent', minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: 'exceptZero' }),
+);
+/** Porcentaje con signo (2 decimales salvo que se pida otra cosa). */
+export const pct = (v: number, decimals: 0 | 1 | 2 = 2) => pctFmt[decimals].format(v);
+/** Peso o participación (sin signo, 1 decimal): "24,1%". */
+export const share = (v: number) => pctFmt[1].format(v).replace('+', '');
 
 const numFmt = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 4 });
 export const num = (v: number) => numFmt.format(v);
@@ -50,6 +55,13 @@ export function dayLabel(priceDate: string | null | undefined): string {
   if (!priceDate || priceDate >= todayIso()) return 'hoy';
   const weekday = WEEKDAYS[new Date(`${priceDate}T12:00:00Z`).getUTCDay()];
   return `el ${weekday} ${priceDate.slice(8, 10)}/${priceDate.slice(5, 7)}`;
+}
+
+/** Versión corta para espacios chicos: "hoy" o "vie 06/11". */
+export function shortDayLabel(priceDate: string | null | undefined): string {
+  if (!priceDate || priceDate >= todayIso()) return 'hoy';
+  const weekday = WEEKDAYS[new Date(`${priceDate}T12:00:00Z`).getUTCDay()].slice(0, 3);
+  return `${weekday} ${priceDate.slice(8, 10)}/${priceDate.slice(5, 7)}`;
 }
 
 /** La fecha de precio más reciente de la cartera (para decir a qué día corresponde la variación). */
