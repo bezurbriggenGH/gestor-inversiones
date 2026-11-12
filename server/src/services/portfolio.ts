@@ -200,6 +200,7 @@ export interface Position {
   totalGainPct: number;
   dayChange: number;
   dayChangePct: number; // variación del precio del activo en el día
+  prevMarketValue: number; // lo que valía ayer lo que ya tenías ayer
 }
 
 export function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: PriceRow | undefined, conv: Converter) {
@@ -242,6 +243,27 @@ export function computePosition(ops: OperationRow[], last: PriceRow | undefined,
   const totalGain = realized + unrealized + dividends;
   const peak = peakCapital(ops, conv);
 
+  // Variación del día: valor de hoy − valor de ayer − plata que pusiste hoy.
+  // Lo comprado hoy se mide contra lo que pagaste, no contra el cierre de ayer:
+  // tenías 10 a $100, hoy vale $110 y compraste 5 a $105 → 10 × $10 + 5 × $5 = $125 (no 15 × $10).
+  let heldYesterday = quantity;
+  let cashToday = 0;
+  if (last && prev) {
+    for (const op of ops) {
+      if (op.date <= prev.date || op.date > last.date) continue;
+      const total = conv(opTotal(op), op.date);
+      if (op.type === 'COMPRA') {
+        heldYesterday -= op.quantity;
+        cashToday += total;
+      } else if (op.type === 'VENTA') {
+        heldYesterday += op.quantity;
+        cashToday -= total;
+      }
+    }
+  }
+  const prevMarketValue = Math.max(0, heldYesterday) * prevPrice;
+  const dayChange = marketValue - prevMarketValue - cashToday;
+
   const position: Position = {
     quantity,
     avgCost: quantity > 0 ? costBasis / quantity : 0,
@@ -257,8 +279,9 @@ export function computePosition(ops: OperationRow[], last: PriceRow | undefined,
     dividends,
     totalGain,
     totalGainPct: peak > 0 ? totalGain / peak : 0,
-    dayChange: quantity * (price - prevPrice),
+    dayChange,
     dayChangePct: prevPrice > 0 ? price / prevPrice - 1 : 0,
+    prevMarketValue,
   };
   return { position, realizedByOp };
 }
@@ -461,7 +484,8 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
   const dividends = sum('dividends');
   const invested = sum('invested');
   const dayChange = sum('dayChange');
-  const yesterdayValue = marketValue - dayChange;
+  // Lo que valía ayer lo que ya tenías (lo comprado hoy no cuenta en la base del %)
+  const yesterdayValue = sum('prevMarketValue');
   const totalGain = realized + unrealized + dividends;
   // El pico se calcula sobre todas las operaciones juntas, en orden: no es la suma de los picos de cada activo
   const peak = peakCapital(getOperations(userId), conv);

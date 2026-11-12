@@ -78,6 +78,25 @@ describe('Ganancias', () => {
     assert.ok(near(p.dayChangePct, 130 / 120 - 1));
   });
 
+  test('variación del día con una compra de hoy: tenía 10 a $100, hoy vale $110 y compré 5 a $105 → gané $125', () => {
+    const p = position(
+      [op('COMPRA', '2024-01-01', 10, 90), op('COMPRA', '2024-06-02', 5, 105)],
+      close('2024-06-02', 110),
+      close('2024-06-01', 100),
+    );
+    assert.ok(near(p.dayChange, 125)); // 10 × ($110 − $100) + 5 × ($110 − $105), no 15 × $10
+    assert.ok(near(p.prevMarketValue, 1000));
+  });
+
+  test('variación del día con una venta de hoy: tenía 10 a $100 y vendí todo a $108 → gané $80', () => {
+    const p = position(
+      [op('COMPRA', '2024-01-01', 10, 90), op('VENTA', '2024-06-02', 10, 108)],
+      close('2024-06-02', 110),
+      close('2024-06-01', 100),
+    );
+    assert.ok(near(p.dayChange, 80)); // vendí a $108 lo que ayer valía $100
+  });
+
   test('acertijo de la vaca: compro a 2.000, vendo a 2.200, recompro a 2.300, vendo a 2.500 → gané 400', () => {
     const ops = [
       op('COMPRA', '2024-01-01', 1, 2000),

@@ -70,10 +70,16 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
           Rendimiento por año
         </span>
         <span className={`tabular text-3xl font-semibold ${irr != null ? tone(irr) : 'text-muted'}`}>{irr != null ? pct(irr) : '—'}</span>
-        {real ? (
+        {real?.irr != null ? (
+          // También por año, para que se pueda comparar con el número de arriba
+          <span className="text-sm" title={`En todo el período: ${pct(real.pct)} contra la inflación`}>
+            <span className={`tabular ${tone(real.irr)}`}>{pct(real.irr)}</span>{' '}
+            <span className="text-muted">por año {real.irr >= 0 ? 'por encima' : 'por debajo'} de la inflación</span>
+          </span>
+        ) : real ? (
           <span className="text-sm">
             <span className={`tabular ${tone(real.pct)}`}>{pct(real.pct)}</span>{' '}
-            <span className="text-muted">{real.pct >= 0 ? 'por encima' : 'por debajo'} de la inflación</span>
+            <span className="text-muted">{real.pct >= 0 ? 'por encima' : 'por debajo'} de la inflación en todo el período</span>
           </span>
         ) : (
           <span className="text-sm text-muted">Necesitás al menos un mes de operaciones</span>

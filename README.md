@@ -16,7 +16,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Mapa de la cartera**: cada activo es un rectángulo del tamaño de tu tenencia, en verde o rojo según cómo le fue.
 - **Comparativa**: compara tu cartera contra inflación, dólar MEP, plazo fijo, Merval y S&P 500,
   simulando que la misma plata entró y salió en las mismas fechas.
-- **Rendimiento real**: cuánto ganaste descontando la inflación.
+- **Rendimiento real**: cuánto ganaste descontando la inflación, en total y por año.
 - **Dividendos**: detecta los dividendos que pagaron tus activos y te sugiere registrarlos con la retención habitual.
 - **Diario de decisiones**: para cada compra y venta, qué hizo el precio (en dólares) 30, 90 y 180 días después, y tu porcentaje de aciertos.
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
@@ -89,6 +89,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
 | `server/test/validaciones.test.ts` | Casos límite cargados desde la app: cantidades negativas o con decimales, ventas de más, fechas imposibles, dividendos imposibles, borrar activos |
 | `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña |
+| `server/test/importador.test.ts` | Números del archivo del broker ("1.234,56", "0.125") |
 
 ## Tecnologías
 
@@ -145,12 +146,13 @@ client/src/
 - **Costo por Precio Promedio Ponderado (PPP)**, comisiones incluidas.
 - **Resultado realizado**: ventas ya hechas (cobrado neto − costo promedio de lo vendido).
 - **Resultado no realizado**: valor de mercado de la tenencia − su costo.
-- **Dividendos**: ingreso aparte, neto de retenciones (30% sugerido para CEDEARs, 7% para acciones locales).
+- **Dividendos**: ingreso aparte, neto de retenciones (30% sugerido para CEDEARs, 7% para acciones locales). Los sugeridos de un CEDEAR se calculan como los paga el broker: dividendo en dólares de la acción en EE.UU. ÷ ratio × dólar MEP de ese día.
 - **En dólares**, cada operación y cada precio se convierten con el dólar **del día en que ocurrieron**.
 - **Benchmarks**: cada compra "compra" unidades de la alternativa y cada venta o dividendo "vende" unidades.
 - **TIR**: tasa anual que iguala a cero el valor presente de todos los flujos (incluido el valor actual).
 - **Plazo fijo**: tasa de depósitos a 30 días, renovado cada mes (capitalización mensual).
 - **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%.
 - **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias.
-- **Splits**: una operación anterior a un split se multiplica en cantidad y se divide en precio por el factor del split; el monto total no cambia.
+- **Splits**: una operación anterior a un split se multiplica en cantidad y se divide en precio por el factor del split; el monto total no cambia. Si el split deja una fracción de acción, se toma como cobrada en efectivo al precio de ese día (el broker solo acredita acciones enteras).
+- **Variación del día**: valor de hoy − valor de ayer − plata puesta hoy; lo comprado hoy se mide contra lo que pagaste.
 - **CCL implícito**: precio del CEDEAR × ratio ÷ precio en EE.UU. Si el ratio observado se aleja más de 10% del de la tabla (por ejemplo, tras un split), no se muestra.

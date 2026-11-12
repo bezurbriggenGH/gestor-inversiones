@@ -193,7 +193,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
 
   // Ganancia real: contra inflación, siempre en pesos de hoy
   const inflIdx = indices.inflacion;
-  let realReturn: { gain: number; pct: number } | null = null;
+  let realReturn: { gain: number; pct: number; irr: number | null } | null = null;
   if (!inflIdx.empty) {
     let inflUnits = 0;
     for (const f of flows) inflUnits += f.amount / inflIdx.at(f.date);
@@ -203,7 +203,11 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       const s = prices.get(t);
       if (qty > 1e-9 && s && !s.empty) valueArs += qty * s.at(last.date);
     }
-    realReturn = { gain: valueArs - inflValueArs, pct: inflValueArs > 0 ? valueArs / inflValueArs - 1 : 0 };
+    // Rendimiento real POR AÑO: la TIR con cada peso llevado a pesos de hoy. Así se puede poner al
+    // lado de la TIR nominal. Ejemplo: ganar 39% en un año con 35% de inflación es 1,39 / 1,35 − 1 ≈ 3% real.
+    const realFlows = flows.map((f) => ({ date: f.date, amount: -f.amount / inflIdx.at(f.date) }));
+    const irr = xirr([...realFlows, { date: last.date, amount: valueArs / inflIdx.at(last.date) }]);
+    realReturn = { gain: valueArs - inflValueArs, pct: inflValueArs > 0 ? valueArs / inflValueArs - 1 : 0, irr };
   }
 
   return {

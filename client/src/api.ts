@@ -60,7 +60,7 @@ export interface Portfolio {
     dayChange: number;
     dayChangePct: number;
   };
-  realReturn: { gain: number; pct: number } | null;
+  realReturn: { gain: number; pct: number; irr: number | null } | null;
   positions: PortfolioPosition[];
   lastSync: number | null;
   errors: string[];
@@ -184,7 +184,7 @@ export interface History {
     lastDataDate: string | null;
   }[];
   portfolio: { value: number; netInvested: number; gain: number; irr: number | null } | null;
-  realReturn: { gain: number; pct: number } | null;
+  realReturn: { gain: number; pct: number; irr: number | null } | null;
   monthly: { month: string; return: number; gain: number }[];
 }
 
