@@ -121,15 +121,34 @@ export function syncAsset(ticker: string, force = false): Promise<void> {
   });
 }
 
-/** Para CEDEARs: precio de la acción original en EE.UU. (para el CCL implícito). */
+/**
+ * Para CEDEARs: precio y dividendos de la acción original en EE.UU.
+ * El precio sirve para el CCL implícito; los dividendos, para calcular lo que paga cada CEDEAR
+ * (Yahoo los informa mal en BYMA: pasados a pesos con el dólar de hoy, no con el de esa fecha).
+ */
 async function syncUnderlying(ticker: string): Promise<void> {
   const symbol = usSymbolOf(ticker);
   if (!symbol) return;
   const series = `us:${symbol}`;
+  const divSeries = `usdiv:${symbol}`;
+  // Se baja completo la primera vez (o si nunca se guardaron sus dividendos)
+  const fullKey = `us-full:${symbol}`;
   try {
     const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM index_values WHERE series = ?', series)?.d;
-    const chart = await fetchChart(symbol, last ? { from: addDays(last, -7) } : { range: '2y' });
+    let full = !last || !get('SELECT 1 FROM sync_state WHERE key = ?', fullKey);
+    let chart = await fetchChart(symbol, full ? { range: '10y' } : { from: addDays(last!, -7) });
+    if (!full && chart.splits.length > 0) {
+      // Split en EE.UU.: Yahoo ajustó todo el historial, así que se vuelve a bajar completo
+      chart = await fetchChart(symbol, { range: '10y' });
+      full = true;
+    }
+    const stored = get<{ n: number }>('SELECT COUNT(*) AS n FROM index_values WHERE series = ?', series)?.n ?? 0;
+    // Solo se reemplaza el historial si Yahoo devolvió uno completo
+    const replace = full && chart.bars.length >= stored * 0.9;
+    if (replace) run('DELETE FROM index_values WHERE series IN (?, ?)', series, divSeries);
     saveIndex(series, chart.bars.map((b) => ({ date: b.date, value: b.close })));
+    saveIndex(divSeries, chart.dividends.map((d) => ({ date: d.date, value: d.amount })));
+    if (replace) markSynced(fullKey);
   } catch (e) {
     // Es un dato extra: si falla, el resto del activo sigue funcionando
     console.warn(`[sync] ${symbol} en EE.UU.:`, (e as Error).message);

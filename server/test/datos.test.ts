@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { all, run } from '../src/db.ts';
 import { cleanHistory, detectRatioChanges } from '../src/services/clean.ts';
+import { dividendEvents } from '../src/services/portfolio.ts';
 
 /** Precios diarios desde el 1/1/2024: una lista de cierres. */
 const series = (closes: number[]) =>
@@ -71,6 +72,37 @@ describe('Corregir el historial guardado', () => {
     assert.deepEqual(
       all<{ amount: number }>("SELECT amount FROM dividend_events WHERE ticker = 'DIV'").map((r) => r.amount),
       [31.5],
+    );
+  });
+});
+
+describe('Dividendos de CEDEARs', () => {
+  // KO: ratio 5 (5 CEDEARs = 1 acción). En sept. 2019 pagó US$0,40 por acción y el MEP estaba a $69,21
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('KO', 'KO.BA', 'Coca-Cola', 'CEDEAR')");
+  run("INSERT INTO index_values (series, date, value) VALUES ('usdiv:KO', '2019-09-13', 0.4)");
+  run("INSERT INTO fx_rates (kind, date, buy, sell) VALUES ('bolsa', '2019-09-13', 69.21, 69.21)");
+  run("INSERT INTO fx_rates (kind, date, buy, sell) VALUES ('bolsa', '2026-11-10', 1560, 1588)");
+  // Lo que informa Yahoo en BYMA: pasado a pesos con un dólar de hoy, 22 veces más
+  run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('KO', '2019-09-13', 123.6)");
+
+  test('se paga en dólares ÷ ratio, al dólar de ese día: 0,40 ÷ 5 × $69,21 = $5,54 por CEDEAR', () => {
+    const [d] = dividendEvents('KO', 'CEDEAR');
+    assert.equal(d.date, '2019-09-13');
+    assert.ok(Math.abs(d.amount - 5.5368) < 1e-6);
+  });
+
+  test('un CEDEAR sin ratio conocido no informa dividendos (el dato de Yahoo no es confiable)', () => {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('ZZZ', 'ZZZ.BA', 'Sin ratio', 'CEDEAR')");
+    run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('ZZZ', '2024-01-10', 50)");
+    assert.deepEqual(dividendEvents('ZZZ', 'CEDEAR'), []);
+  });
+
+  test('en una acción local se usa lo que informa Yahoo, que ya está en pesos', () => {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('LOC', 'LOC.BA', 'Local', 'ACCION')");
+    run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('LOC', '2024-05-10', 12.5)");
+    assert.deepEqual(
+      dividendEvents('LOC', 'ACCION').map((d) => ({ ...d })),
+      [{ date: '2024-05-10', amount: 12.5 }],
     );
   });
 });

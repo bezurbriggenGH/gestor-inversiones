@@ -13,6 +13,7 @@ import type { FxKind } from '../providers/dolar.ts';
 import { FX_KINDS } from '../providers/dolar.ts';
 import { HttpError } from '../util.ts';
 import { buildCedearInfo, cedearGap } from './cedear.ts';
+import { CEDEAR_RATIOS, usSymbolOf } from '../cedears.ts';
 
 export type Currency = 'ARS' | 'USD';
 export type OpType = 'COMPRA' | 'VENTA' | 'DIVIDENDO';
@@ -403,11 +404,30 @@ export function convertOp(op: OperationRow, conv: Converter, fx: DateSeries, rea
 /** Retención habitual sobre dividendos: 30% en EE.UU. para CEDEARs, 7% para acciones locales. */
 export const DEFAULT_WITHHOLDING = { CEDEAR: 0.3, ACCION: 0.07 } as const;
 
-/** Dividendos que Yahoo informa para fechas en que tenías el activo y que no registraste. */
+/**
+ * Dividendo bruto en pesos por unidad (en la escala de hoy), en cada fecha en que se pagó.
+ * - Acciones locales: lo que informa Yahoo, que ya viene en pesos.
+ * - CEDEARs: Yahoo los informa mal (pasados a pesos con el dólar de HOY: un dividendo de KO de 2019
+ *   figura 22 veces más grande). Se calcula como lo paga el broker: dividendo en dólares de la acción
+ *   en EE.UU. ÷ ratio × dólar MEP de ese día. Ejemplo: KO paga US$0,40, ratio 5, MEP $69 → $5,52.
+ *   Sin ratio conocido no hay forma confiable de calcularlo, y no se informa nada.
+ */
+export function dividendEvents(ticker: string, type: string): { date: string; amount: number }[] {
+  if (type !== 'CEDEAR') return all('SELECT date, amount FROM dividend_events WHERE ticker = ? ORDER BY date', ticker);
+  const symbol = usSymbolOf(ticker);
+  const fx = loadFx('bolsa');
+  if (!symbol || fx.empty) return [];
+  const ratio = CEDEAR_RATIOS[ticker];
+  return all<{ date: string; value: number }>('SELECT date, value FROM index_values WHERE series = ? ORDER BY date', `usdiv:${symbol}`).map(
+    (d) => ({ date: d.date, amount: (d.value / ratio) * fx.at(d.date) }),
+  );
+}
+
+/** Dividendos que pagó el activo en fechas en que lo tenías y que no registraste. */
 function pendingDividends(userId: number, asset: AssetRow) {
   const ops = getOperations(userId, asset.ticker);
   const registered = ops.filter((o) => o.type === 'DIVIDENDO').map((o) => Date.parse(o.date));
-  const events = all<{ date: string; amount: number }>('SELECT date, amount FROM dividend_events WHERE ticker = ? ORDER BY date', asset.ticker);
+  const events = dividendEvents(asset.ticker, asset.type);
   const rate = DEFAULT_WITHHOLDING[asset.type];
   return events
     .map((e) => ({ ...e, quantity: holdingBefore(ops, e.date) }))

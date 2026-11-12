@@ -6,7 +6,7 @@
 import { all, get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { HttpError, arDate } from '../util.ts';
-import { DateSeries, loadFx, type Currency } from './portfolio.ts';
+import { DateSeries, dividendEvents, loadFx, type Currency } from './portfolio.ts';
 import { loadIndex, plazoFijoIndex } from './history.ts';
 
 export const ALTERNATIVES = {
@@ -41,11 +41,7 @@ export function simulate(ticker: string, amount: number, date: string, currency:
   const pf = plazoFijoIndex(start.date, arDate());
 
   // Dividendos cobrados en el camino (brutos, sin reinvertir)
-  const dividends = all<{ date: string; amount: number }>(
-    'SELECT date, amount FROM dividend_events WHERE ticker = ? AND date > ? ORDER BY date',
-    ticker,
-    start.date,
-  );
+  const dividends = dividendEvents(ticker, asset.type).filter((d) => d.date > start.date);
   let divIdx = 0;
   let cash = 0;
 
