@@ -89,6 +89,8 @@ export interface Operation {
   imageCount?: number;
   /** Si hubo un split después: por cuánto se multiplicó la cantidad (1 = sin cambios). */
   splitFactor?: number;
+  /** La agregó la app: la fracción de acción que dejó un split, cobrada en efectivo. */
+  auto?: 'fraccion';
 }
 
 export interface PricePoint {

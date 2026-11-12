@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { buildHistory, monthlyReturns, plazoFijoIndex, xirr } from '../src/services/history.ts';
-import { adjustForSplits, buildPortfolio, computePosition } from '../src/services/portfolio.ts';
+import { adjustForSplits, adjustOperations, assertNoShortSelling, buildPortfolio, computePosition } from '../src/services/portfolio.ts';
 
 describe('TIR (rendimiento por año)', () => {
   test('pongo $1.000 y al año recibo $1.100 → 10% anual', () => {
@@ -98,6 +98,41 @@ describe('Splits y cambios de ratio', () => {
     assert.equal(p.quantity, 30);
     assert.equal(p.costBasis, 3000);
     assert.equal(p.unrealized, 600); // igual que 10 × ($360 − $300) sin el split
+  });
+});
+
+describe('Fracciones que deja un split (el broker solo acredita acciones enteras)', () => {
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('FRAC', 'FRAC.BA', 'Reparto de acciones', 'ACCION')");
+  run("INSERT INTO split_events (ticker, date, factor) VALUES ('FRAC', '2025-01-10', 2.25)");
+  run("INSERT INTO prices (ticker, date, close) VALUES ('FRAC', '2025-01-10', 50)");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('DIVA', 'DIVA.BA', 'Dividendo en acciones', 'CEDEAR')");
+  run("INSERT INTO split_events (ticker, date, factor) VALUES ('DIVA', '2025-05-13', 1.01)");
+  run("INSERT INTO prices (ticker, date, close) VALUES ('DIVA', '2025-05-13', 1000)");
+
+  test('10 acciones con un reparto de ×2,25 son 22,5: quedan 22 y la media acción se cobra a $50', () => {
+    const ops = adjustOperations([op('COMPRA', '2025-01-02', 10, 225, 0, 'FRAC')]);
+    const fraccion = ops.find((o) => o.auto);
+    assert.ok(fraccion);
+    assert.equal(fraccion.type, 'VENTA');
+    assert.ok(near(fraccion.quantity, 0.5));
+    assert.equal(fraccion.price, 50);
+    const p = computePosition(ops, close('2025-02-01', 50), undefined, pesos).position;
+    assert.ok(near(p.quantity, 22));
+    // Pagué $2.250 por 22,5 acciones ($100 cada una): la media que se cobra a $50 pierde $25
+    assert.ok(near(p.realized, -25));
+  });
+
+  test('con 2 CEDEARs, un dividendo del 1% en acciones no acredita ninguno: al vender 2 no queda nada', () => {
+    const ops = adjustOperations([op('COMPRA', '2025-04-15', 2, 1010, 0, 'DIVA'), op('VENTA', '2025-07-21', 2, 1100, 0, 'DIVA')]);
+    assert.doesNotThrow(() => assertNoShortSelling(ops));
+    const p = computePosition(ops, close('2025-08-01', 1100), undefined, pesos).position;
+    assert.equal(p.quantity, 0);
+  });
+
+  test('con 300 CEDEARs, el 1% en acciones sí acredita 3 enteros y no queda fracción', () => {
+    const ops = adjustOperations([op('COMPRA', '2025-04-15', 300, 1010, 0, 'DIVA')]);
+    assert.equal(ops.filter((o) => o.auto).length, 0);
+    assert.ok(near(computePosition(ops, close('2025-08-01', 1000), undefined, pesos).position.quantity, 303));
   });
 });
 

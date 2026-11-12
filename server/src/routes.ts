@@ -8,9 +8,8 @@ import {
   buildAssetDetail,
   buildOperationDetail,
   buildPortfolio,
-  getOperations,
   getRawOperations,
-  adjustForSplits,
+  adjustOperations,
   loadFx,
   maxHoldingBetween,
   parseCurrency,
@@ -244,10 +243,11 @@ router.post('/assets/:ticker/operations', (req, res) => {
   }
 
   const draft = { user_id: uid, ticker, type, date, quantity, price, fees, ...readNote(b) };
-  const existing = getOperations(uid, ticker);
-  const [adjusted] = adjustForSplits([{ ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }]);
-  assertNoShortSelling([...existing, adjusted]);
-  if (type === 'DIVIDENDO') assertPossibleDividend(existing, adjusted, ticker);
+  // Se recalcula todo junto: una compra nueva puede cambiar las fracciones que deja un split
+  const withDraft = adjustOperations([...getRawOperations(uid, ticker), { ...draft, id: Number.MAX_SAFE_INTEGER, created_at: '' }]);
+  const adjusted = withDraft.find((o) => o.id === Number.MAX_SAFE_INTEGER)!;
+  assertNoShortSelling(withDraft);
+  if (type === 'DIVIDENDO') assertPossibleDividend(withDraft.filter((o) => o !== adjusted), adjusted, ticker);
   res.status(201).json({ id: insertOperation(draft) });
 });
 
@@ -299,7 +299,7 @@ router.delete('/operations/:id', (req, res) => {
   const op = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, uid);
   if (!op) throw new HttpError(404, 'Operación no encontrada');
   try {
-    assertNoShortSelling(getOperations(uid, op.ticker).filter((o) => o.id !== id));
+    assertNoShortSelling(adjustOperations(getRawOperations(uid, op.ticker).filter((o) => o.id !== id)));
   } catch {
     throw new HttpError(409, 'No se puede borrar esta compra: quedarían ventas sin respaldo. Borrá primero esas ventas.');
   }
@@ -422,7 +422,7 @@ router.post('/import', async (req, res) => {
       created_at: '',
     }));
     try {
-      assertNoShortSelling(adjustForSplits([...(existingByTicker.get(t) ?? []), ...drafts]), t);
+      assertNoShortSelling(adjustOperations([...(existingByTicker.get(t) ?? []), ...drafts]), t);
     } catch (err) {
       // Se marcan solo las ventas: las compras de ese ticker se pueden importar igual
       for (const r of newOps) if (r.type === 'VENTA') r.errors.push(err instanceof Error ? err.message : 'ventas sin respaldo');

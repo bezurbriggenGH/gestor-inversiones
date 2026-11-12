@@ -34,7 +34,8 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx); // para mostrar precios en la moneda elegida
   const judgeConv = makeConverter(fx.empty ? 'ARS' : 'USD', fx); // para medir si acertaste
-  const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO');
+  // Las fracciones que deja un split no son decisiones tuyas: no se juzgan
+  const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
 
   const priceCache = new Map<string, DateSeries>();
   const pricesOf = (ticker: string) => {

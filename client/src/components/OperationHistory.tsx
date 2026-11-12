@@ -29,6 +29,21 @@ function Result({ op, currency }: { op: Operation; currency: Currency }) {
   return <span className="text-muted">—</span>;
 }
 
+const AUTO_HINT = 'Fracción de acción que dejó un split o un reparto de acciones: el broker la paga en efectivo. La agrega la app.';
+
+/** Fila del historial: las operaciones que cargaste abren su detalle; las automáticas no tienen detalle. */
+function Row({ op, className, children }: { op: Operation; className: string; children: React.ReactNode }) {
+  return op.auto ? (
+    <div className={className} title={AUTO_HINT}>
+      {children}
+    </div>
+  ) : (
+    <Link to={`/operacion/${op.id}`} className={`${className} transition hover:bg-card-hover`}>
+      {children}
+    </Link>
+  );
+}
+
 /** Historial de compras, ventas y dividendos de un activo, agrupado por año. */
 export function OperationHistory({ operations, currency }: { operations: Operation[]; currency: Currency }) {
   const [filter, setFilter] = useState<OperationType | 'TODAS'>('TODAS');
@@ -83,14 +98,14 @@ export function OperationHistory({ operations, currency }: { operations: Operati
                   )}
                 </div>
                 {ops.map((op) => (
-                  <Link
+                  <Row
                     key={op.id}
-                    to={`/operacion/${op.id}`}
-                    className={`tabular grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 rounded-lg bg-card px-4 py-2.5 text-sm transition hover:bg-card-hover ${COLS}`}
+                    op={op}
+                    className={`tabular grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 rounded-lg bg-card px-4 py-2.5 text-sm ${COLS}`}
                   >
                     <span className="flex min-w-0 items-center gap-2.5">
                       <span className={`h-3 w-3 shrink-0 rounded-full ${DOT[op.type]}`} />
-                      <span>{LABEL[op.type]}</span>
+                      <span>{op.auto ? 'Fracción cobrada' : LABEL[op.type]}</span>
                       {(op.note_title || op.note_body) && (
                         <span className="text-xs text-muted" title={op.note_title ?? 'Tiene una justificación'}>
                           ✎
@@ -113,7 +128,7 @@ export function OperationHistory({ operations, currency }: { operations: Operati
                     <span className="truncate text-right">
                       <Result op={op} currency={currency} />
                     </span>
-                  </Link>
+                  </Row>
                 ))}
               </div>
             );

@@ -40,6 +40,8 @@ export interface OperationRow {
   created_at: string;
   /** Si hubo un split después de la operación: por cuánto se multiplicó la cantidad (1 = sin cambios). */
   splitFactor?: number;
+  /** Operación que no cargó el usuario: la fracción de acción que deja un split, cobrada en efectivo. */
+  auto?: 'fraccion';
 }
 
 interface PriceRow {
@@ -304,8 +306,71 @@ export function adjustForSplits<T extends Pick<OperationRow, 'ticker' | 'date' |
   });
 }
 
+/**
+ * Fracciones que deja un split o un dividendo en acciones.
+ * El broker solo acredita acciones enteras y la fracción la paga en efectivo: con 10 acciones y un
+ * reparto de ×2,25 quedan 22,5 → se acreditan 22 y la media acción se cobra. Acá se agrega esa
+ * venta automática (al precio de ese día), así la tenencia coincide con la del broker.
+ * Recibe operaciones ya ajustadas por splits (todas en la escala de hoy).
+ */
+export function withSplitFractions(ops: OperationRow[]): OperationRow[] {
+  const out = [...ops];
+  let nextId = -1;
+  for (const ticker of new Set(ops.map((o) => o.ticker))) {
+    const splits = all<{ date: string; factor: number }>('SELECT date, factor FROM split_events WHERE ticker = ? ORDER BY date', ticker);
+    if (splits.length === 0) continue;
+    const mine = sortOps(ops.filter((o) => o.ticker === ticker));
+    let held = 0; // en la escala de hoy
+    let i = 0;
+    for (const [k, split] of splits.entries()) {
+      for (; i < mine.length && mine[i].date < split.date; i++) {
+        if (mine[i].type === 'COMPRA') held += mine[i].quantity;
+        else if (mine[i].type === 'VENTA') held -= mine[i].quantity;
+      }
+      if (held < 1e-9) continue;
+      // Cuántas unidades reales había justo después del split
+      const later = splits.slice(k + 1).reduce((f, s) => f * s.factor, 1);
+      const units = held / later;
+      const fraction = units - Math.floor(units + 1e-6);
+      if (fraction < 1e-6) continue;
+      // Precio de ese día (o el primero que haya, si el activo no cotizó justo ese día)
+      const price = get<{ close: number | null }>(
+        `SELECT COALESCE(
+           (SELECT close FROM prices WHERE ticker = ?1 AND date <= ?2 ORDER BY date DESC LIMIT 1),
+           (SELECT close FROM prices WHERE ticker = ?1 AND date > ?2 ORDER BY date LIMIT 1)) AS close`,
+        ticker,
+        split.date,
+      );
+      const quantity = fraction * later;
+      held -= quantity;
+      out.push({
+        id: nextId--,
+        user_id: mine[0].user_id,
+        ticker,
+        type: 'VENTA',
+        date: split.date,
+        quantity,
+        price: price?.close ?? 0,
+        fees: 0,
+        note_title: null,
+        note_body: null,
+        note_link: null,
+        created_at: '',
+        splitFactor: 1,
+        auto: 'fraccion',
+      });
+    }
+  }
+  return out;
+}
+
+/** Operaciones en la escala de hoy: ajustadas por splits y con las fracciones cobradas en efectivo. */
+export function adjustOperations(raw: OperationRow[]): OperationRow[] {
+  return withSplitFractions(adjustForSplits(raw));
+}
+
 export function getOperations(userId: number, ticker?: string): OperationRow[] {
-  return adjustForSplits(getRawOperations(userId, ticker));
+  return adjustOperations(getRawOperations(userId, ticker));
 }
 
 function lastTwoPrices(ticker: string): [PriceRow | undefined, PriceRow | undefined] {

@@ -119,7 +119,7 @@ export function AssetPage() {
   if (error || !data) return <ErrorBox error={error} />;
 
   const { asset, position: p, operations } = data;
-  const tradeOps = operations.filter((o) => o.type !== 'DIVIDENDO');
+  const tradeOps = operations.filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
   // Qué compone el resultado total, solo las partes que existen
   const totalDetail = [
     p.realized ? `ventas ${money(p.realized, currency, true)}` : '',
