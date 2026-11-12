@@ -179,4 +179,19 @@ describe('Las pantallas cuentan lo mismo', () => {
     const h = buildHistory(1, 'ARS', 'contadoconliqui');
     assert.equal(h.benchmarks.find((b) => b.key === 'dolar')!.label, 'Dólar CCL');
   });
+
+  test('un índice sin datos hace más de una semana no se compara; uno con datos de hace 4 días, sí', () => {
+    // La cartera llega al 01/04. El Merval se cortó el 03/03 (un mes antes); el S&P 500 tiene hasta el 28/03.
+    for (const d of ['2025-01-02', '2025-02-03', '2025-03-03']) run("INSERT INTO index_values (series, date, value) VALUES ('merval', ?, 100)", d);
+    for (const d of ['2025-01-02', '2025-03-28']) run("INSERT INTO index_values (series, date, value) VALUES ('spy', ?, 100)", d);
+    const h = buildHistory(1, 'ARS', 'bolsa');
+    const merval = h.benchmarks.find((b) => b.key === 'merval')!;
+    const spy = h.benchmarks.find((b) => b.key === 'spy')!;
+    assert.equal(merval.frozen, true);
+    assert.equal(merval.available, false);
+    assert.equal(merval.diff, null); // no hay diferencia falsa contra un dato de hace un mes
+    assert.equal(merval.lastDataDate, '2025-03-03');
+    assert.equal(spy.frozen, false);
+    assert.equal(spy.available, true);
+  });
 });

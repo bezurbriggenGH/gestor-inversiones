@@ -33,6 +33,10 @@ export const BENCHMARKS = {
 } as const;
 export type BenchmarkKey = keyof typeof BENCHMARKS;
 
+/** Índices que cotizan todos los días hábiles: si no tienen datos hace más de STALE_DAYS, quedaron congelados. */
+const DAILY_INDICES: BenchmarkKey[] = ['merval', 'spy'];
+const STALE_DAYS = 7;
+
 interface Flow {
   date: string;
   amount: number; // pesos que ENTRAN a la inversión (+ compra, − venta o dividendo)
@@ -173,7 +177,12 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   const lastDataDate = (k: BenchmarkKey) => (indices[k].empty ? null : indices[k].dates[indices[k].dates.length - 1]);
 
   const benchmarks = (Object.keys(BENCHMARKS) as BenchmarkKey[]).map((k) => {
-    const value = last.benchmarks[k];
+    // Un índice que cotiza todos los días y no tiene datos hace más de una semana quedó congelado
+    // (Yahoo dejó de publicar el Merval el 16/10/2026). Compararlo contra tu cartera de hoy daría
+    // una diferencia falsa: no se muestra hasta que vuelva a haber datos, y vuelve solo.
+    const lastData = lastDataDate(k);
+    const frozen = DAILY_INDICES.includes(k) && lastData != null && addDaysIso(lastData, STALE_DAYS) < last.date;
+    const value = frozen ? null : last.benchmarks[k];
     // La alternativa "dólar" usa el mismo dólar que elegiste para ver la cartera (MEP o CCL)
     const info =
       k === 'dolar' && kind === 'contadoconliqui'
@@ -187,7 +196,8 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       diff: value != null ? last.value - value : null,
       diffPct: value != null && value > 0 ? last.value / value - 1 : null,
       irr: value != null ? irrWithFinal(value) : null,
-      lastDataDate: lastDataDate(k),
+      lastDataDate: lastData,
+      frozen,
     };
   });
 

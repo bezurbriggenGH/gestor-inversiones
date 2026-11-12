@@ -124,7 +124,7 @@ export function BenchmarkPage() {
                   </p>
                   <p className="text-xs text-muted">
                     {b.description}
-                    {b.lastDataDate && b.lastDataDate < (data.points.at(-1)?.date ?? '') && ` · último dato ${date(b.lastDataDate)}`}
+                    {!b.frozen && b.lastDataDate && b.lastDataDate < (data.points.at(-1)?.date ?? '') && ` · último dato ${date(b.lastDataDate)}`}
                   </p>
                 </td>
                 {b.available ? (
@@ -138,7 +138,9 @@ export function BenchmarkPage() {
                   </>
                 ) : (
                   <td colSpan={3} className="px-5 py-3 text-right text-muted">
-                    Sin datos todavía
+                    {b.frozen && b.lastDataDate
+                      ? `Yahoo no lo publica desde el ${date(b.lastDataDate)}: vuelve solo cuando haya datos nuevos`
+                      : 'Sin datos todavía'}
                   </td>
                 )}
               </tr>

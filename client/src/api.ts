@@ -182,6 +182,8 @@ export interface History {
     diffPct: number | null;
     irr: number | null;
     lastDataDate: string | null;
+    /** Cotiza todos los días pero no tiene datos hace más de una semana: no se compara. */
+    frozen: boolean;
   }[];
   portfolio: { value: number; netInvested: number; gain: number; irr: number | null } | null;
   realReturn: { gain: number; pct: number; irr: number | null } | null;
