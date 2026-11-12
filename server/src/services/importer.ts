@@ -103,7 +103,9 @@ export function parseNumber(raw: string | undefined): number | null {
   if (!s) return null;
   const lastDot = s.lastIndexOf('.');
   const lastComma = s.lastIndexOf(',');
-  if (lastDot >= 0 && lastComma >= 0) {
+  // "0.125" o "0,125": nadie escribe un número con miles empezando en 0, así que es decimal
+  if (/^-?0[.,]\d+$/.test(s)) s = s.replace(',', '.');
+  else if (lastDot >= 0 && lastComma >= 0) {
     s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
   } else if (lastComma >= 0) {
     s = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');

@@ -1,0 +1,30 @@
+// Lectura de los números que vienen en los archivos de los brokers.
+import './helpers.ts';
+import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parseNumber } from '../src/services/importer.ts';
+
+describe('Números del archivo del broker', () => {
+  test('formato argentino: "1.234,56" es 1234,56 y "12.000" es doce mil', () => {
+    assert.equal(parseNumber('1.234,56'), 1234.56);
+    assert.equal(parseNumber('12.000'), 12000);
+    assert.equal(parseNumber('$ 3,5'), 3.5);
+  });
+
+  test('formato de EE.UU.: "1,234.56" es 1234,56 y "1234.56" también', () => {
+    assert.equal(parseNumber('1,234.56'), 1234.56);
+    assert.equal(parseNumber('1234.56'), 1234.56);
+  });
+
+  test('un dividendo de US$0.125 es 0,125, no 125', () => {
+    assert.equal(parseNumber('0.125'), 0.125);
+    assert.equal(parseNumber('0,125'), 0.125);
+    assert.equal(parseNumber('-0.250'), -0.25);
+  });
+
+  test('vacío o sin números no es un número', () => {
+    assert.equal(parseNumber(''), null);
+    assert.equal(parseNumber('abc'), null);
+    assert.equal(parseNumber(undefined), null);
+  });
+});
