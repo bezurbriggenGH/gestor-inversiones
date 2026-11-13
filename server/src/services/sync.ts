@@ -61,6 +61,27 @@ export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = []
   const splitStmt = db.prepare(
     'INSERT INTO split_events (ticker, date, factor) VALUES (?, ?, ?) ON CONFLICT (ticker, date) DO UPDATE SET factor = excluded.factor',
   );
+  // Cambios de ratio que detectó la app y Yahoo no informa: Yahoo sigue mandando los días anteriores
+  // en la escala vieja. Cada actualización vuelve a bajar la última semana, así que esos días se
+  // llevan a la escala de hoy ANTES de guardarlos. Si se guardaran tal cual, pisarían los ya
+  // corregidos y el salto de precio reaparecería corrido unos días: se inventarían splits al revés
+  // y la tenencia se partiría a la mitad en cada actualización.
+  if (bars.length > 0) {
+    const first = bars[0].date;
+    const last = bars[bars.length - 1].date;
+    const reported = new Set(splits.map((s) => s.date));
+    const unreported = all<Split>('SELECT date, factor FROM split_events WHERE ticker = ? AND date > ? AND date <= ?', ticker, first, last).filter(
+      (s) => !reported.has(s.date),
+    );
+    const scale = (date: string) => unreported.filter((s) => date < s.date).reduce((f, s) => f * s.factor, 1);
+    const div = (v: number | null, f: number) => (v == null ? null : v / f);
+    bars = bars.map((b) => {
+      const f = scale(b.date);
+      if (f === 1) return b;
+      return { ...b, open: div(b.open, f), high: div(b.high, f), low: div(b.low, f), close: b.close / f, volume: b.volume == null ? null : b.volume * f };
+    });
+    dividends = dividends.map((d) => (d.date >= first ? { ...d, amount: d.amount / scale(d.date) } : d));
+  }
   tx(() => {
     for (const b of bars) priceStmt.run(ticker, b.date, b.open, b.high, b.low, b.close, b.volume);
     for (const d of dividends) divStmt.run(ticker, d.date, d.amount);

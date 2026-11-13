@@ -4,7 +4,8 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { all, run } from '../src/db.ts';
 import { cleanHistory, detectRatioChanges } from '../src/services/clean.ts';
-import { dividendEvents } from '../src/services/portfolio.ts';
+import { adjustForSplits, dividendEvents } from '../src/services/portfolio.ts';
+import { saveBars } from '../src/services/sync.ts';
 
 /** Precios diarios desde el 1/1/2024: una lista de cierres. */
 const series = (closes: number[]) =>
@@ -104,5 +105,32 @@ describe('Dividendos de CEDEARs', () => {
       dividendEvents('LOC', 'ACCION').map((d) => ({ ...d })),
       [{ date: '2024-05-10', amount: 12.5 }],
     );
+  });
+});
+
+describe('Cambio de ratio que Yahoo no informa, con la app actualizando todos los días', () => {
+  test('compré 10 a $100 y el ratio cambia 2:1: quedan 20 a $50, hoy y los días siguientes', () => {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('RAT', 'RAT.BA', 'Prueba', 'CEDEAR')");
+    // 40 ruedas (lunes a viernes) a $100 y, desde el cambio de ratio, a $50. Yahoo nunca ajusta las viejas.
+    const days: string[] = [];
+    for (const d = new Date('2026-03-02T00:00:00Z'); days.length < 50; d.setUTCDate(d.getUTCDate() + 1)) {
+      if (d.getUTCDay() % 6 !== 0) days.push(d.toISOString().slice(0, 10));
+    }
+    const CHANGE = 40;
+    const yahoo = days.map((date, i) => ({ date, open: null, high: null, low: null, close: i < CHANGE ? 100 : 50, volume: null }));
+    const weekBefore = (iso: string) => new Date(Date.parse(iso) - 7 * 86_400_000).toISOString().slice(0, 10);
+    const compra = { ticker: 'RAT', date: days[5], quantity: 10, price: 100 };
+
+    // Cada día la app baja desde una semana antes del último precio guardado (como syncAsset)
+    for (let today = CHANGE - 1; today < days.length; today++) {
+      const last = all<{ d: string | null }>("SELECT MAX(date) AS d FROM prices WHERE ticker = 'RAT'")[0].d;
+      saveBars('RAT', yahoo.filter((b) => (!last || b.date >= weekBefore(last)) && b.date <= days[today]));
+      if (today < CHANGE) continue;
+      const splits = all<{ date: string; factor: number }>("SELECT date, factor FROM split_events WHERE ticker = 'RAT'").map((s) => ({ ...s }));
+      assert.deepEqual(splits, [{ date: days[CHANGE], factor: 2 }], `splits al ${days[today]}`);
+      assert.equal(adjustForSplits([compra])[0].quantity, 20, `tenencia al ${days[today]}`);
+      const closes = all<{ close: number }>("SELECT close FROM prices WHERE ticker = 'RAT'").map((r) => r.close);
+      assert.ok(closes.every((c) => c === 50), `precios al ${days[today]}`);
+    }
   });
 });
