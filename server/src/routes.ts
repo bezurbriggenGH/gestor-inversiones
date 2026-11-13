@@ -181,6 +181,24 @@ const MAX_PRICE = 1_000_000_000_000;
 // lo cobrás igual. Por eso se mira lo máximo que tuviste en los 90 días anteriores al pago.
 const DIVIDEND_WINDOW_DAYS = 90;
 
+/**
+ * Controla cantidad, precio y comisiones. Devuelve qué está mal, o null si está todo bien.
+ * Lo usan la carga a mano y la importación: un archivo no puede meter lo que el formulario rechaza.
+ */
+export function amountsProblem(type: OpType, quantity: number, price: number, fees: number): string | null {
+  if (!(quantity > 0) || !Number.isFinite(quantity)) return 'La cantidad debe ser mayor a 0';
+  // En BYMA no se operan fracciones de acciones ni de CEDEARs
+  if (!Number.isInteger(quantity)) return 'La cantidad tiene que ser un número entero (no se operan fracciones de acciones)';
+  if (quantity > MAX_QUANTITY) return 'La cantidad es demasiado grande';
+  if (!(price > 0) || !Number.isFinite(price)) return 'El precio debe ser mayor a 0';
+  if (price > MAX_PRICE) return 'El precio es demasiado grande';
+  if (!(fees >= 0) || !Number.isFinite(fees)) return 'Las comisiones no pueden ser negativas';
+  if (type === 'COMPRA' ? fees > quantity * price : fees >= quantity * price) {
+    return 'Las comisiones o retenciones no pueden superar el monto de la operación';
+  }
+  return null;
+}
+
 /** Un dividendo solo puede ser por acciones que tuviste cerca de la fecha de pago. */
 function assertPossibleDividend(ops: OperationRow[], div: OperationRow, ticker: string) {
   const from = addDays(div.date, -DIVIDEND_WINDOW_DAYS).toISOString().slice(0, 10);
@@ -231,16 +249,8 @@ router.post('/assets/:ticker/operations', (req, res) => {
   const quantity = Number(b.quantity);
   const price = Number(b.price);
   const fees = b.fees === '' || b.fees == null ? 0 : Number(b.fees);
-  if (!(quantity > 0) || !Number.isFinite(quantity)) throw new HttpError(400, 'La cantidad debe ser mayor a 0');
-  // En BYMA no se operan fracciones de acciones ni de CEDEARs
-  if (!Number.isInteger(quantity)) throw new HttpError(400, 'La cantidad tiene que ser un número entero (no se operan fracciones de acciones)');
-  if (quantity > MAX_QUANTITY) throw new HttpError(400, 'La cantidad es demasiado grande');
-  if (!(price > 0) || !Number.isFinite(price)) throw new HttpError(400, 'El precio debe ser mayor a 0');
-  if (price > MAX_PRICE) throw new HttpError(400, 'El precio es demasiado grande');
-  if (!(fees >= 0) || !Number.isFinite(fees)) throw new HttpError(400, 'Las comisiones no pueden ser negativas');
-  if (type === 'COMPRA' ? fees > quantity * price : fees >= quantity * price) {
-    throw new HttpError(400, 'Las comisiones o retenciones no pueden superar el monto de la operación');
-  }
+  const problem = amountsProblem(type, quantity, price, fees);
+  if (problem) throw new HttpError(400, problem);
 
   const draft = { user_id: uid, ticker, type, date, quantity, price, fees, ...readNote(b) };
   // Se recalcula todo junto: una compra nueva puede cambiar las fracciones que deja un split
@@ -390,6 +400,11 @@ router.post('/import', async (req, res) => {
       r.errors.push(`no encontramos ${r.ticker} en BYMA (por ahora la app maneja acciones y CEDEARs; bonos y fondos todavía no)`);
     }
     if (r.date && r.date > today) r.errors.push('fecha futura');
+    // Las mismas reglas que al cargar a mano (después de pasar a pesos los dividendos en dólares)
+    if (!r.ignored && !r.errors.length && r.type && r.quantity != null && r.price != null) {
+      const problem = amountsProblem(r.type, r.quantity, r.price, r.fees);
+      if (problem) r.errors.push(problem.charAt(0).toLowerCase() + problem.slice(1));
+    }
   }
 
   // Duplicados: misma operación ya cargada

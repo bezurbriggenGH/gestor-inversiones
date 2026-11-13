@@ -13,6 +13,7 @@
 // el ticker viene dentro del tipo ("Compra(GGAL)"), la comisión está en tres columnas
 // (Comis., Iva Com., Otros Imp.) y hay una cuenta en pesos y otra en dólares.
 import type { OpType } from './portfolio.ts';
+import { isRealDate } from '../util.ts';
 
 export interface ParsedRow {
   line: number;
@@ -116,7 +117,16 @@ export function parseNumber(raw: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Devuelve la fecha como AAAA-MM-DD, o null si no se entiende o no existe.
+ * "31/02/2026" no existe, y "12/25/2025" (mes/día, como en EE.UU.) tampoco: no hay mes 25.
+ */
 export function parseDate(raw: string | undefined): string | null {
+  const iso = readDate(raw);
+  return iso && isRealDate(iso) ? iso : null;
+}
+
+function readDate(raw: string | undefined): string | null {
   if (!raw) return null;
   const t = raw.trim();
   // Excel guarda las fechas como días desde el 30/12/1899 (45973 = 12/11/2025)

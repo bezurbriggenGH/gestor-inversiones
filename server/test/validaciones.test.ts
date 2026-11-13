@@ -184,3 +184,35 @@ describe('Sin sesión', () => {
     assert.equal(r.status, 401);
   });
 });
+
+describe('Importar un archivo: las mismas reglas que al cargar a mano', () => {
+  const csv = [
+    'Fecha;Tipo;Ticker;Cantidad;Precio;Comision',
+    '02/01/2025;Compra;AAA;10;100;0', // bien
+    '31/02/2025;Compra;AAA;1;100;0', // el 31 de febrero no existe
+    '12/25/2024;Compra;AAA;1;100;0', // fecha de EE.UU.: no hay mes 25
+    '03/01/2025;Compra;AAA;2,5;100;0', // no se operan fracciones
+    '03/01/2025;Compra;AAA;1;100;5000', // comisión mayor que la compra
+    '03/01/2025;Compra;AAA;1;0;0', // precio cero
+  ].join('\n');
+
+  test('la vista previa marca con error cada fila que el formulario rechazaría', async () => {
+    const r = await call('POST', '/import', { csv, commit: false });
+    assert.equal(r.status, 200);
+    const filas = r.body.rows as { status: string; errors: string[] }[];
+    assert.deepEqual(filas.map((f) => f.status), ['ok', 'error', 'error', 'error', 'error', 'error']);
+    assert.match(filas[1].errors.join(), /fecha inválida/);
+    assert.match(filas[2].errors.join(), /fecha inválida/);
+    assert.match(filas[3].errors.join(), /entero/);
+    assert.match(filas[4].errors.join(), /superar/);
+    assert.match(filas[5].errors.join(), /precio/);
+  });
+
+  test('al confirmar se importa solo la fila buena: quedan 10 acciones, no 15,5', async () => {
+    const r = await call('POST', '/import', { csv, commit: true });
+    assert.equal(r.body.summary.ok, 1);
+    const detalle = await call('GET', '/assets/AAA?currency=ARS&fx=bolsa');
+    assert.equal(detalle.body.position.quantity, 10);
+    assert.deepEqual(detalle.body.operations.map((o: { date: string }) => o.date), ['2025-01-02']);
+  });
+});

@@ -2,7 +2,7 @@
 import './helpers.ts';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseNumber } from '../src/services/importer.ts';
+import { parseDate, parseNumber } from '../src/services/importer.ts';
 
 describe('Números del archivo del broker', () => {
   test('formato argentino: "1.234,56" es 1234,56 y "12.000" es doce mil', () => {
@@ -26,5 +26,24 @@ describe('Números del archivo del broker', () => {
     assert.equal(parseNumber(''), null);
     assert.equal(parseNumber('abc'), null);
     assert.equal(parseNumber(undefined), null);
+  });
+});
+
+describe('Fechas del archivo del broker', () => {
+  test('día/mes/año, año-mes-día y el número de fecha de Excel', () => {
+    assert.equal(parseDate('02/11/2026'), '2026-11-02');
+    assert.equal(parseDate('2026-11-02'), '2026-11-02');
+    assert.equal(parseDate('2/11/26'), '2026-11-02');
+    assert.equal(parseDate('45973'), '2025-11-12');
+  });
+
+  test('una fecha que no existe no se acepta (31 de febrero)', () => {
+    assert.equal(parseDate('31/02/2026'), null);
+    assert.equal(parseDate('29/02/2024'), '2024-02-29'); // 2024 sí fue bisiesto
+  });
+
+  test('una fecha de EE.UU. (mes/día) con día mayor a 12 no se acepta: no hay mes 25', () => {
+    // Antes "12/25/2025" se guardaba como 2025-25-12
+    assert.equal(parseDate('12/25/2025'), null);
   });
 });
