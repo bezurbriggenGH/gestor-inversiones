@@ -202,7 +202,7 @@ export interface JournalEntry {
   note_title: string | null;
   note_body: string | null;
   hasNote: boolean;
-  horizons: ({ days: number; available: false } | { days: number; available: true; price: number; change: number; verdict: Verdict })[];
+  horizons: ({ days: number; available: false; noData?: true } | { days: number; available: true; price: number; change: number; verdict: Verdict })[];
   sinceChange: number | null;
   verdict: Verdict | null;
   verdictDays: number | null;

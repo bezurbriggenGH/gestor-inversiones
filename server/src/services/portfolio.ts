@@ -76,6 +76,11 @@ export class DateSeries {
     return this.dates.length === 0;
   }
 
+  /** ¿Hay un dato real para esa fecha (de ese día o anterior)? Antes del primer dato, `at` devuelve uno posterior. */
+  covers(date: string): boolean {
+    return !this.empty && date >= this.dates[0];
+  }
+
   at(date: string): number {
     if (this.empty) throw new HttpError(503, 'Todavía no hay datos guardados para convertir');
     if (date < this.dates[0]) return this.values[0];

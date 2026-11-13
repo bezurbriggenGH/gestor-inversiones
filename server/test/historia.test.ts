@@ -195,3 +195,29 @@ describe('Las pantallas cuentan lo mismo', () => {
     assert.equal(spy.available, true);
   });
 });
+
+describe('Activo sin precios guardados de la época de la operación', () => {
+  // Yahoo no tiene historial de algunos CEDEARs: el único precio guardado es posterior a la compra y a la venta
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (2, 'Otra', 'otra@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('NUE', 'NUE.BA', 'Sin historial', 'CEDEAR')");
+  run("INSERT INTO user_assets (user_id, ticker) VALUES (2, 'NUE')");
+  run("INSERT INTO prices (ticker, date, close) VALUES ('NUE', '2025-04-01', 5850)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'NUE', 'COMPRA', '2025-02-03', 135, 2910)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'NUE', 'VENTA', '2025-03-03', 135, 3137.5)");
+
+  test('el día de la compra vale lo que pagué, no el precio de meses después', () => {
+    const h = buildHistory(2, 'ARS', 'bolsa');
+    const compra = h.points.find((p) => p.date === '2025-02-03')!;
+    assert.equal(compra.value, 135 * 2910); // $392.850, no 135 × $5.850 = $789.750
+  });
+
+  test('la ganancia aparece en el mes en que vendí: 135 × ($3.137,50 − $2.910) = $30.712,50', () => {
+    const months = buildHistory(2, 'ARS', 'bolsa').monthly;
+    const feb = months.find((m) => m.month === '2025-02')!;
+    const mar = months.find((m) => m.month === '2025-03')!;
+    assert.ok(near(feb.gain, 0)); // antes: +$396.900 inventados
+    assert.ok(near(feb.return, 0));
+    assert.ok(near(mar.gain, 30_712.5));
+    assert.ok(near(mar.return, 30_712.5 / 392_850));
+  });
+});

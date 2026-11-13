@@ -105,10 +105,11 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   const dateSet = new Set<string>();
   for (const t of tickers) {
     const rows = all<{ date: string; value: number }>(
-      'SELECT date, close AS value FROM prices WHERE ticker = ? AND date >= ? ORDER BY date',
+      // Desde el último precio anterior a la primera operación, para tener precio el primer día
+      `SELECT date, close AS value FROM prices WHERE ticker = ?1
+         AND date >= COALESCE((SELECT MAX(date) FROM prices WHERE ticker = ?1 AND date <= ?2), ?2) ORDER BY date`,
       t,
-      // un día antes, para tener precio el primer día
-      addDaysIso(start, -10),
+      start,
     );
     prices.set(t, new DateSeries(rows));
     for (const r of rows) if (r.date >= start) dateSet.add(r.date);
@@ -139,6 +140,21 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   for (const k of Object.keys(indices)) units[k] = 0;
   let opIdx = 0;
   let netInvested = 0; // en la moneda elegida, cada flujo convertido en su fecha
+  // Precio de la última compra o venta de cada activo. Se usa para valuarlo los días en que todavía
+  // no hay precios guardados (Yahoo no tiene historial de algunos CEDEARs). Usar el primer precio que
+  // exista, que es posterior, inventa ganancias: 135 a $2.910 valuados ese mismo día a $5.850.
+  const lastTradePrice = new Map<string, number>();
+  const valueOn = (date: string) => {
+    let value = 0;
+    for (const [t, qty] of holdings) {
+      if (qty <= 1e-9) continue;
+      const s = prices.get(t);
+      const price = s?.covers(date) ? s.at(date) : lastTradePrice.get(t);
+      if (price != null) value += qty * price;
+    }
+    return value;
+  };
+  let lastValueArs = 0;
 
   const points: { date: string; value: number; netInvested: number; benchmarks: Record<string, number | null> }[] = [];
 
@@ -148,6 +164,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       const flow = flows[opIdx];
       if (op.type === 'COMPRA') holdings.set(op.ticker, (holdings.get(op.ticker) ?? 0) + op.quantity);
       if (op.type === 'VENTA') holdings.set(op.ticker, (holdings.get(op.ticker) ?? 0) - op.quantity);
+      if (op.type !== 'DIVIDENDO') lastTradePrice.set(op.ticker, op.price);
       netInvested += toCur(flow.amount, flow.date);
       for (const [k, idx] of Object.entries(indices)) {
         if (!idx.empty) units[k] += flow.amount / idx.at(flow.date);
@@ -155,11 +172,8 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       opIdx++;
     }
 
-    let valueArs = 0;
-    for (const [t, qty] of holdings) {
-      const s = prices.get(t);
-      if (qty > 1e-9 && s && !s.empty) valueArs += qty * s.at(date);
-    }
+    const valueArs = valueOn(date);
+    lastValueArs = valueArs;
 
     const bench: Record<string, number | null> = {};
     for (const [k, idx] of Object.entries(indices)) {
@@ -208,11 +222,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     let inflUnits = 0;
     for (const f of flows) inflUnits += f.amount / inflIdx.at(f.date);
     const inflValueArs = inflUnits * inflIdx.at(last.date);
-    let valueArs = 0;
-    for (const [t, qty] of holdings) {
-      const s = prices.get(t);
-      if (qty > 1e-9 && s && !s.empty) valueArs += qty * s.at(last.date);
-    }
+    const valueArs = lastValueArs;
     // Rendimiento real POR AÑO: la TIR con cada peso llevado a pesos de hoy. Así se puede poner al
     // lado de la TIR nominal. Ejemplo: ganar 39% en un año con 35% de inflación es 1,39 / 1,35 − 1 ≈ 3% real.
     const realFlows = flows.map((f) => ({ date: f.date, amount: -f.amount / inflIdx.at(f.date) }));

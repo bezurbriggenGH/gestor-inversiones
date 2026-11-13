@@ -6,7 +6,7 @@ import { DATA_KEYS, useJournal, useOperation } from '../hooks';
 import { useSettings } from '../settings';
 import { FX_LABEL, date, money, num, pct, tone } from '../format';
 import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, lacksPrices } from '../components/Verdict';
 import { OperationPhotos } from '../components/OperationPhotos';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -170,7 +170,7 @@ export function OperationPage() {
         <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-medium">¿Acertaste?</h2>
-            <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} />
+            <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} noData={lacksPrices(entry)} />
           </div>
           <p className="text-sm text-muted">{explainVerdict(entry)}</p>
           <HorizonList entry={entry} />

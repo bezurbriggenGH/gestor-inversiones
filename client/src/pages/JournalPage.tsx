@@ -5,7 +5,7 @@ import { useJournal } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, lacksPrices } from '../components/Verdict';
 
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
   return (
@@ -94,7 +94,7 @@ export function JournalPage() {
                   {date(e.date)} · {num(e.quantity)} a {money(e.price, currency)}
                 </span>
                 <span className="ml-auto">
-                  <VerdictBadge verdict={e.verdict} days={e.verdictDays} />
+                  <VerdictBadge verdict={e.verdict} days={e.verdictDays} noData={lacksPrices(e)} />
                 </span>
               </div>
               {e.note_title && <p className="text-sm">“{e.note_title}”</p>}

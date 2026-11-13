@@ -42,3 +42,23 @@ describe('Diario de decisiones: se juzga en dólares', () => {
     });
   }
 });
+
+describe('Diario de decisiones: sin precios de la época no se juzga', () => {
+  // El único precio guardado es de junio; la compra es de enero
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (2, 'Otra', 'otra@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('NUE', 'NUE.BA', 'Sin historial', 'CEDEAR')");
+  run("INSERT INTO prices (ticker, date, close) VALUES ('NUE', '2025-06-02', 5850)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'NUE', 'COMPRA', '2025-01-02', 10, 2910)");
+
+  test('a 30 y 90 días figura "sin datos" y no hay veredicto (antes: acierto de +100% contra el precio de junio)', () => {
+    const [entry] = buildJournal(2, 'ARS', 'bolsa').entries;
+    for (const days of [30, 90]) {
+      const h = entry.horizons.find((x) => x.days === days)!;
+      assert.equal(h.available, false);
+      assert.equal('noData' in h && h.noData, true);
+    }
+    assert.equal(entry.verdict, null);
+    // A 180 días (01/07) todavía no hay precio posterior guardado: sigue pendiente, no "sin datos"
+    assert.equal('noData' in entry.horizons.find((x) => x.days === 180)!, false);
+  });
+});
