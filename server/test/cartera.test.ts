@@ -10,6 +10,7 @@ import {
   holdingBefore,
   makeConverter,
   peakCapital,
+  unregisteredDividends,
 } from '../src/services/portfolio.ts';
 
 const position = (ops: ReturnType<typeof op>[], last?: ReturnType<typeof close>, prev?: ReturnType<typeof close>) =>
@@ -158,6 +159,36 @@ describe('Dividendos', () => {
     assert.equal(holdingBefore(ops, '2024-02-01'), 10); // la venta de ese mismo día no cuenta
     assert.equal(holdingBefore(ops, '2024-02-02'), 6);
     assert.equal(holdingBefore(ops, '2024-01-10'), 0); // todavía no las tenía
+  });
+});
+
+describe('Dividendos pendientes de cargar', () => {
+  const corte = (date: string) => ({ date });
+  const fechas = (events: { date: string }[]) => events.map((e) => e.date);
+
+  test('un dividendo cobrado 45 días después del corte ya está cargado (SPY: corte 20/09, cobro 04/11)', () => {
+    // Antes se sugería igual: solo se daba por cargado si el cobro era a MENOS de 45 días
+    assert.deepEqual(unregisteredDividends([corte('2024-09-20')], ['2024-11-04']), []);
+  });
+
+  test('un cobro que tardó 89 días también cuenta (PBR: corte 03/06, cobro 31/08)', () => {
+    assert.deepEqual(unregisteredDividends([corte('2026-06-03')], ['2026-08-31']), []);
+  });
+
+  test('cada cobro cubre un solo dividendo: dos cortes y un cobro → queda uno pendiente', () => {
+    // El cobro del 04/11 es del corte de septiembre; el de diciembre todavía no se cobró
+    const pendientes = unregisteredDividends([corte('2024-09-20'), corte('2024-12-20')], ['2024-11-04']);
+    assert.deepEqual(fechas(pendientes), ['2024-12-20']);
+  });
+
+  test('si no cobraste uno del medio, el pendiente es ese y no otro', () => {
+    // Cortes cada tres meses; se cargaron el primero y el tercero (cobrados a los 4 días)
+    const cortes = [corte('2025-02-10'), corte('2025-05-12'), corte('2025-08-11')];
+    assert.deepEqual(fechas(unregisteredDividends(cortes, ['2025-02-14', '2025-08-15'])), ['2025-05-12']);
+  });
+
+  test('un cobro de otra época no tapa nada: sin nada cargado cerca, sigue pendiente', () => {
+    assert.deepEqual(fechas(unregisteredDividends([corte('2025-02-10')], ['2024-06-01', '2025-09-01'])), ['2025-02-10']);
   });
 });
 

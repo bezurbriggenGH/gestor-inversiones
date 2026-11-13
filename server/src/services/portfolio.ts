@@ -451,17 +451,41 @@ export function dividendEvents(ticker: string, type: string): { date: string; am
   );
 }
 
+// La fuente informa la fecha de corte; el broker acredita el dividendo después. En CEDEARs puede
+// tardar bastante: SPY paga unos 45 días después y PBR llegó a 89. Con 100 días entra cualquier pago
+// sin llegar al dividendo siguiente de un activo que paga cada tres meses con demora normal.
+const DIVIDEND_PAYMENT_DAYS = 100;
+
+/**
+ * De los dividendos que pagó el activo, cuáles no están cargados todavía.
+ * Cada dividendo cargado cubre UNO solo: el último con fecha de corte anterior (o igual) que siga sin cubrir.
+ * Ejemplo: cortes el 20/09 y el 20/12, y un cobro cargado el 04/11 → el de septiembre está
+ * cobrado y el de diciembre sigue pendiente.
+ * Recibe los dividendos pagados ordenados por fecha.
+ */
+export function unregisteredDividends<T extends { date: string }>(events: T[], registeredDates: string[]): T[] {
+  const day = (iso: string) => Date.parse(iso) / 86_400_000;
+  const covered = new Set<number>();
+  for (const paid of [...registeredDates].sort()) {
+    let match = -1;
+    events.forEach((e, i) => {
+      const lag = day(paid) - day(e.date);
+      if (!covered.has(i) && lag >= 0 && lag <= DIVIDEND_PAYMENT_DAYS) match = i;
+    });
+    if (match >= 0) covered.add(match);
+  }
+  return events.filter((_, i) => !covered.has(i));
+}
+
 /** Dividendos que pagó el activo en fechas en que lo tenías y que no registraste. */
 function pendingDividends(userId: number, asset: AssetRow) {
   const ops = getOperations(userId, asset.ticker);
-  const registered = ops.filter((o) => o.type === 'DIVIDENDO').map((o) => Date.parse(o.date));
-  const events = dividendEvents(asset.ticker, asset.type);
-  const rate = DEFAULT_WITHHOLDING[asset.type];
-  return events
+  const registered = ops.filter((o) => o.type === 'DIVIDENDO').map((o) => o.date);
+  const events = dividendEvents(asset.ticker, asset.type)
     .map((e) => ({ ...e, quantity: holdingBefore(ops, e.date) }))
-    .filter((e) => e.quantity > 0)
-    // Si ya hay un dividendo cargado dentro de los 45 días, lo damos por registrado
-    .filter((e) => !registered.some((r) => Math.abs(r - Date.parse(e.date)) < 45 * 86_400_000))
+    .filter((e) => e.quantity > 0);
+  const rate = DEFAULT_WITHHOLDING[asset.type];
+  return unregisteredDividends(events, registered)
     .map((e) => {
       const gross = e.quantity * e.amount;
       return { date: e.date, amountPerShare: e.amount, quantity: e.quantity, gross, withholding: gross * rate, withholdingRate: rate };
