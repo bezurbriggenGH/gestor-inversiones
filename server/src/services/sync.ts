@@ -9,6 +9,7 @@ import { checkAlerts } from './alerts.ts';
 import { cleanHistory } from './clean.ts';
 import { addDays, lastMarketTime } from '../util.ts';
 import { usSymbolOf } from '../cedears.ts';
+import { adjustForSplits } from './portfolio.ts';
 
 const PRICE_TTL_MS = 15 * 60_000; // precios: con el mercado abierto, como mucho cada 15 minutos
 const FX_TTL_MS = 60 * 60_000; // dólar: como mucho cada hora
@@ -42,6 +43,23 @@ export function pricesStale(lastSync: number | null | undefined, now: number = D
   if (marketTime < now) return lastSync < marketTime;
   return now - lastSync > PRICE_TTL_MS;
 }
+
+/**
+ * ¿Hay que actualizar este activo en la vuelta general?
+ * Lo que alguien tiene en cartera (o agregó para seguir) se actualiza como siempre. Lo que ya se
+ * vendió del todo, una vez por día: su precio solo se usa para el Diario y para el historial, y
+ * así una cartera con 15 activos y 47 ya vendidos no le hace 62 pedidos a Yahoo cada 15 minutos.
+ */
+export function dueForSync(lastSync: number | null | undefined, followed: boolean, now: number = Date.now()): boolean {
+  if (!pricesStale(lastSync, now)) return false;
+  return followed || !lastSync || now - lastSync > DAILY_TTL_MS;
+}
+
+// Después de un error no se insiste enseguida: se espera 2 minutos, después 4, 8… hasta 30.
+// Sin esto, con Yahoo caído cada carga de la cartera volvía a pedir todos los activos.
+const RETRY_FIRST_MS = 2 * 60_000;
+const RETRY_MAX_MS = 30 * 60_000;
+const failures = new Map<string, { until: number; delay: number; message: string }>();
 
 function markSynced(key: string) {
   run('INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value', key, Date.now());
@@ -118,28 +136,41 @@ export function syncAsset(ticker: string, force = false): Promise<void> {
     );
     if (!asset) return;
     if (!force && !pricesStale(asset.last_sync)) return;
-
-    const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM prices WHERE ticker = ?', ticker)?.d;
-    // Los activos guardados antes de registrar splits se descargan completos una vez
-    const splitsKey = `splits:${ticker}`;
-    let full = !last || !get('SELECT 1 FROM sync_state WHERE key = ?', splitsKey);
-    // Pedimos una semana de margen para corregir cierres que Yahoo haya ajustado
-    let chart = await fetchChart(asset.symbol, full ? { range: '10y' } : { from: addDays(last!, -7) });
-    const isNew = (s: Split) => !get('SELECT 1 FROM split_events WHERE ticker = ? AND date = ?', ticker, s.date);
-    if (!full && chart.splits.some(isNew)) {
-      // Split nuevo: Yahoo ajustó todo el historial, así que se vuelve a bajar completo
-      chart = await fetchChart(asset.symbol, { range: '10y' });
-      full = true;
+    const failed = failures.get(ticker);
+    // Sigue en espera: se avisa del mismo error, sin volver a pedir
+    if (!force && failed && failed.until > Date.now()) throw new Error(failed.message);
+    try {
+      await downloadAsset(ticker, asset.symbol);
+      failures.delete(ticker);
+    } catch (err) {
+      const delay = Math.min(failed ? failed.delay * 2 : RETRY_FIRST_MS, RETRY_MAX_MS);
+      failures.set(ticker, { until: Date.now() + delay, delay, message: (err as Error).message });
+      throw err;
     }
-    const stored = get<{ n: number }>('SELECT COUNT(*) AS n FROM prices WHERE ticker = ?', ticker)?.n ?? 0;
-    // Solo se reemplaza el historial si Yahoo devolvió uno completo (a veces devuelve solo el día de hoy)
-    if (full && chart.bars.length >= stored * 0.9) run('DELETE FROM prices WHERE ticker = ?', ticker);
-    saveBars(ticker, chart.bars, chart.dividends, chart.splits);
-    if (!full || chart.bars.length >= stored * 0.9) markSynced(splitsKey);
-    run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
-    checkAlerts(ticker);
-    await syncUnderlying(ticker);
   });
+}
+
+async function downloadAsset(ticker: string, symbol: string): Promise<void> {
+  const last = get<{ d: string | null }>('SELECT MAX(date) AS d FROM prices WHERE ticker = ?', ticker)?.d;
+  // Los activos guardados antes de registrar splits se descargan completos una vez
+  const splitsKey = `splits:${ticker}`;
+  let full = !last || !get('SELECT 1 FROM sync_state WHERE key = ?', splitsKey);
+  // Pedimos una semana de margen para corregir cierres que Yahoo haya ajustado
+  let chart = await fetchChart(symbol, full ? { range: '10y' } : { from: addDays(last!, -7) });
+  const isNew = (s: Split) => !get('SELECT 1 FROM split_events WHERE ticker = ? AND date = ?', ticker, s.date);
+  if (!full && chart.splits.some(isNew)) {
+    // Split nuevo: Yahoo ajustó todo el historial, así que se vuelve a bajar completo
+    chart = await fetchChart(symbol, { range: '10y' });
+    full = true;
+  }
+  const stored = get<{ n: number }>('SELECT COUNT(*) AS n FROM prices WHERE ticker = ?', ticker)?.n ?? 0;
+  // Solo se reemplaza el historial si Yahoo devolvió uno completo (a veces devuelve solo el día de hoy)
+  if (full && chart.bars.length >= stored * 0.9) run('DELETE FROM prices WHERE ticker = ?', ticker);
+  saveBars(ticker, chart.bars, chart.dividends, chart.splits);
+  if (!full || chart.bars.length >= stored * 0.9) markSynced(splitsKey);
+  run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
+  checkAlerts(ticker);
+  await syncUnderlying(ticker);
 }
 
 /**
@@ -227,8 +258,19 @@ export function syncIndices(force = false): Promise<void> {
 
 /** Actualiza todo. Si alguna fuente falla, se sigue usando lo guardado y se devuelve el error. */
 export async function syncAll(): Promise<string[]> {
-  const tickers = all<{ ticker: string }>('SELECT DISTINCT ticker FROM user_assets');
-  const results = await Promise.allSettled([syncFx(), syncIndices(), ...tickers.map((t) => syncAsset(t.ticker))]);
+  const assets = all<{ ticker: string; last_sync: number | null }>(
+    'SELECT ticker, last_sync FROM assets WHERE ticker IN (SELECT ticker FROM user_assets)',
+  );
+  // Tenencia de cada activo sumando a todos los usuarios (en la escala de hoy)
+  const held = new Map<string, number>();
+  const trades = all<{ ticker: string; date: string; type: string; quantity: number; price: number }>(
+    "SELECT ticker, date, type, quantity, price FROM operations WHERE type <> 'DIVIDENDO'",
+  );
+  for (const op of adjustForSplits(trades)) held.set(op.ticker, (held.get(op.ticker) ?? 0) + (op.type === 'COMPRA' ? op.quantity : -op.quantity));
+  // Se sigue de cerca lo que alguien tiene y lo recién agregado (todavía sin operaciones)
+  const followed = (ticker: string) => !held.has(ticker) || held.get(ticker)! > 1e-9;
+  const due = assets.filter((a) => dueForSync(a.last_sync, followed(a.ticker)));
+  const results = await Promise.allSettled([syncFx(), syncIndices(), ...due.map((a) => syncAsset(a.ticker))]);
   const errors = results
     .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
     .map((r) => String(r.reason?.message ?? r.reason));
