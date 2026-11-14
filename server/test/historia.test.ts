@@ -221,3 +221,27 @@ describe('Activo sin precios guardados de la época de la operación', () => {
     assert.ok(near(mar.return, 30_712.5 / 392_850));
   });
 });
+
+describe('Variación del día de la cartera', () => {
+  // Dos acciones, 10 de cada una. La última rueda es el 01/04: HOYSI operó, HOYNO no.
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (3, 'Tercera', 'tercera@test.com', 'x')");
+  for (const [ticker, rows] of [
+    ['HOYSI', [['2025-03-31', 100], ['2025-04-01', 110]]],
+    ['HOYNO', [['2025-03-28', 50], ['2025-03-31', 60]]],
+  ] as const) {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES (?, ?, 'Prueba', 'ACCION')", ticker, `${ticker}.BA`);
+    run('INSERT INTO user_assets (user_id, ticker) VALUES (3, ?)', ticker);
+    for (const [date, px] of rows) run('INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)', ticker, date, px);
+    run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (3, ?, 'COMPRA', '2025-03-03', 10, 40)", ticker);
+  }
+
+  test('un activo que no operó en la última rueda no suma su variación de un día anterior', () => {
+    const p = buildPortfolio(3, 'ARS', 'bolsa');
+    // HOYSI: 10 × ($110 − $100) = $100. HOYNO subió $10 el 31/03, pero el 01/04 no se movió.
+    assert.equal(p.summary.dayChange, 100); // antes: $200
+    assert.equal(p.positions.find((x) => x.ticker === 'HOYNO')!.dayChange, 0);
+    // Sobre lo que valía todo ayer: 10 × $100 + 10 × $60 = $1.600
+    assert.ok(near(p.summary.dayChangePct, 100 / 1600));
+    assert.equal(p.summary.marketValue, 10 * 110 + 10 * 60);
+  });
+});

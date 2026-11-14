@@ -98,6 +98,21 @@ describe('Ganancias', () => {
     assert.ok(near(p.dayChange, 80)); // vendí a $108 lo que ayer valía $100
   });
 
+  test('variación del día: un feriado largo en el medio no la borra (5 días corridos sin rueda)', () => {
+    // Último precio el miércoles 27/03 y el siguiente el lunes 01/04: es la rueda anterior, cuenta
+    const p = position([op('COMPRA', '2024-01-01', 10, 90)], close('2024-04-01', 110), close('2024-03-27', 100));
+    assert.equal(p.dayChange, 100);
+  });
+
+  test('variación del día: si el precio anterior es de hace una semana, no es "hoy" y se informa 0', () => {
+    // Tengo 1.312 unidades. Precios guardados: $295 el 06/11 y $206,75 el 13/11, nada en el medio.
+    // Antes: "hoy −29,9%", −$115.784. Eso es lo que bajó en una semana, no hoy.
+    const p = position([op('COMPRA', '2026-06-02', 1312, 500)], close('2026-11-13', 206.75), close('2026-11-06', 295));
+    assert.equal(p.dayChange, 0);
+    assert.equal(p.dayChangePct, 0);
+    assert.equal(p.marketValue, 1312 * 206.75); // el valor sí usa el último precio
+  });
+
   test('acertijo de la vaca: compro a 2.000, vendo a 2.200, recompro a 2.300, vendo a 2.500 → gané 400', () => {
     const ops = [
       op('COMPRA', '2024-01-01', 1, 2000),

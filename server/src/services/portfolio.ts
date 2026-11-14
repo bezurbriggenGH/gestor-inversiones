@@ -208,7 +208,15 @@ export interface Position {
   prevMarketValue: number; // lo que valía ayer lo que ya tenías ayer
 }
 
+// Entre una rueda y la siguiente pasan como mucho 5 días corridos (un fin de semana largo de carnaval
+// o Semana Santa). Si entre los dos últimos precios guardados hay más, el anterior no es "ayer":
+// falta historial (Yahoo solo guarda el precio del día de algunos CEDEARs).
+const MAX_DAYS_BETWEEN_SESSIONS = 5;
+
 export function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: PriceRow | undefined, conv: Converter) {
+  // Sin el precio de la rueda anterior no se puede saber cuánto varió en el día: se informa 0,
+  // no la variación de toda una semana como si fuera la de hoy
+  if (last && prev && Date.parse(last.date) - Date.parse(prev.date) > MAX_DAYS_BETWEEN_SESSIONS * 86_400_000) prev = undefined;
   let quantity = 0;
   let costBasis = 0;
   let invested = 0;
@@ -504,6 +512,16 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
     ...positionFor(userId, a.ticker, conv).position,
     cedearGap: a.type === 'CEDEAR' ? cedearGap(a.ticker) : null,
   }));
+
+  // La variación del día es la de la última rueda. Un activo que ese día no tuvo precio (no operó, o
+  // la fuente todavía no lo publicó) no varió: no se le cuenta la suba o baja de su última rueda vieja.
+  const lastSession = positions.reduce<string | null>((m, p) => (p.priceDate && (!m || p.priceDate > m) ? p.priceDate : m), null);
+  for (const p of positions) {
+    if (!p.priceDate || p.priceDate === lastSession) continue;
+    p.dayChange = 0;
+    p.dayChangePct = 0;
+    p.prevMarketValue = p.marketValue;
+  }
 
   const sum = (k: keyof Position) => positions.reduce((acc, p) => acc + (p[k] as number), 0);
   const marketValue = sum('marketValue');
