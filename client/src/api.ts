@@ -99,10 +99,28 @@ export interface Operation {
   realizedPct: number | null;
   /** Cuántas fotos tiene (solo viene en el historial de un activo). */
   imageCount?: number;
+  /** La primera foto, para la miniatura del gráfico (solo en el historial de un activo). */
+  firstImageId?: number | null;
+  /** Cómo salió la decisión según el Diario (solo compras y ventas, en el historial de un activo). */
+  decision?: OperationDecision | null;
   /** Si hubo un split después: por cuánto se multiplicó la cantidad (1 = sin cambios). */
   splitFactor?: number;
   /** La agregó la app: la fracción de acción que dejó un split, cobrada en efectivo. */
   auto?: 'fraccion';
+}
+
+export interface OperationDecision {
+  verdict: Verdict | null;
+  /** A cuántos días se decidió el veredicto (30 o 90). */
+  days: number | null;
+  /** Cuánto cambió el precio en dólares en ese plazo. */
+  change: number | null;
+  /** Cuánto cambió el precio en dólares desde la operación hasta hoy. */
+  sinceChange: number | null;
+  /** Solo en ventas: plata que dejaste de ganar (+) o te ahorraste de perder (−), a valores de hoy. */
+  missed: number | null;
+  /** Ya pasó el plazo pero no hay precios guardados de esa época. */
+  noData: boolean;
 }
 
 export interface PricePoint {

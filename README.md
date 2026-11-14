@@ -26,6 +26,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **¿Y si no hubieras tocado nada?**: compara lo que tenías un día, a precios de hoy, contra lo que hiciste de verdad. Dice en plata si operar te sumó o te restó.
 - **Comisiones**: cuánto pagaste por comprar y vender, por año, y qué parte de tu ganancia se llevaron.
 - **Informe**: todo lo importante en una hoja para guardar como PDF o imprimir.
+- **El gráfico como diario**: cada compra y venta marcada sobre el precio y pintada según cómo salió (verde acierto, rojo error, gris sin veredicto). Al pasar el cursor se ve por qué la hiciste, la foto que guardaste y cuánto ganaste o dejaste de ganar.
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias.

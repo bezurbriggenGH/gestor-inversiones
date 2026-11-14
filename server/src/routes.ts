@@ -1,5 +1,5 @@
 import express, { Router } from 'express';
-import { MAX_IMAGE_BYTES, addImage, deleteImage, deleteImagesOf, imageCounts, imageFile, listImages } from './services/images.ts';
+import { MAX_IMAGE_BYTES, addImage, deleteImage, deleteImagesOf, firstImageIds, imageCounts, imageFile, listImages } from './services/images.ts';
 import { get, run, tx, all } from './db.ts';
 import { YahooNotFound } from './providers/yahoo.ts';
 import { ensureAsset, syncAll, syncAsset, syncFx, syncIndices } from './services/sync.ts';
@@ -19,7 +19,7 @@ import {
   type OpType,
 } from './services/portfolio.ts';
 import { buildHistory } from './services/history.ts';
-import { buildJournal } from './services/journal.ts';
+import { buildJournal, decisionOf } from './services/journal.ts';
 import { buildCosts, buildHoldComparison } from './services/review.ts';
 import { CSV_TEMPLATE, parseCsv } from './services/importer.ts';
 import { checkAlerts, listAlerts } from './services/alerts.ts';
@@ -163,7 +163,18 @@ router.get('/assets/:ticker', async (req, res) => {
   const detail = buildAssetDetail(userId(res), ticker, currency, fx);
   // Cuántas fotos tiene cada operación, para marcarlas en el historial
   const counts = imageCounts(userId(res));
-  res.json({ ...detail, operations: detail.operations.map((o) => ({ ...o, imageCount: counts.get(o.id) ?? 0 })) });
+  const firstImages = firstImageIds(userId(res));
+  // Cómo salió cada compra y venta, para pintarlas en el gráfico según el veredicto del Diario
+  const decisions = new Map(buildJournal(userId(res), currency, fx, ticker).entries.map((e) => [e.id, decisionOf(e)]));
+  res.json({
+    ...detail,
+    operations: detail.operations.map((o) => ({
+      ...o,
+      imageCount: counts.get(o.id) ?? 0,
+      firstImageId: firstImages.get(o.id) ?? null,
+      decision: decisions.get(o.id) ?? null,
+    })),
+  });
 });
 
 /** Precio de cierre de una fecha (o el último anterior si fue feriado). Siempre en pesos. */

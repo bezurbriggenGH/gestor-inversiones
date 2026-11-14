@@ -30,12 +30,13 @@ function judge(type: 'COMPRA' | 'VENTA', change: number): Verdict {
   return (type === 'COMPRA') === priceWentUp ? 'ACIERTO' : 'ERROR';
 }
 
-export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
+/** Con `ticker`, solo las operaciones de ese activo (para marcarlas en su gráfico). */
+export function buildJournal(userId: number, currency: Currency, kind: FxKind, ticker?: string) {
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx); // para mostrar precios en la moneda elegida
   const judgeConv = makeConverter(fx.empty ? 'ARS' : 'USD', fx); // para medir si acertaste
   // Las fracciones que deja un split no son decisiones tuyas: no se juzgan
-  const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
+  const ops = sortOps(getOperations(userId, ticker)).filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
 
   const assetTypes = new Map(all<{ ticker: string; type: 'ACCION' | 'CEDEAR' }>('SELECT ticker, type FROM assets').map((a) => [a.ticker, a.type]));
   const priceCache = new Map<string, DateSeries>();
@@ -142,5 +143,23 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
       acciones: stats(entries.filter((e) => e.assetType === 'ACCION')),
       cedears: stats(entries.filter((e) => e.assetType === 'CEDEAR')),
     },
+  };
+}
+
+/**
+ * Lo que el gráfico de un activo necesita saber de cada operación: si fue acierto o error,
+ * a cuántos días se decidió, cuánto cambió el precio (en dólares) y, en una venta, la plata
+ * que se dejó de ganar o se ahorró.
+ */
+export function decisionOf(entry: ReturnType<typeof buildJournal>['entries'][number]) {
+  const main = entry.horizons.find((h) => h.days === entry.verdictDays);
+  return {
+    verdict: entry.verdict,
+    days: entry.verdictDays,
+    change: main && main.available ? main.change : null,
+    sinceChange: entry.sinceChange,
+    missed: entry.missed,
+    // Ya pasó el plazo, pero no hay precios guardados de esa época para juzgarla
+    noData: !entry.verdict && entry.horizons.some((h) => !h.available && 'noData' in h),
   };
 }

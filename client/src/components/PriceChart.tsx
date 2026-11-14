@@ -13,7 +13,8 @@ import {
   type SeriesMarker,
   type Time,
 } from 'lightweight-charts';
-import type { Currency, Operation, PricePoint } from '../api';
+import { useNavigate } from 'react-router';
+import { imageUrl, type Currency, type Operation, type PricePoint } from '../api';
 import { date as fmtDate, money, num, pct, tone } from '../format';
 
 const RANGES = [
@@ -35,6 +36,15 @@ type MaKey = (typeof MAS)[number]['key'];
 const UP = '#4f9d69';
 const DOWN = '#c25450';
 const ACCENT = '#7c6bb0';
+const GREY = '#8a8a8f';
+
+/** Color de la marca: cómo salió la decisión según el Diario (no si fue compra o venta: eso lo dice la flecha). */
+function verdictColor(op: Operation): string {
+  const v = op.decision?.verdict;
+  return v === 'ACIERTO' ? UP : v === 'ERROR' ? DOWN : GREY;
+}
+
+const CARD_WIDTH = 300;
 
 function timeToIso(t: Time): string {
   if (typeof t === 'string') return t;
@@ -94,6 +104,75 @@ function Toggle({ on, onClick, children, color }: { on: boolean; onClick: () => 
 }
 
 type Hover = { date: string; open: number; high: number; low: number; close: number };
+/** Operaciones del día sobre el que está el cursor, y dónde dibujar su tarjeta. */
+type Card = { x: number; y: number; ops: Operation[] };
+
+const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
+
+/** Qué pasó después de la operación, en una frase. */
+function outcome(op: Operation): { label: string; cls: string; text: string } {
+  const d = op.decision;
+  const buy = op.type === 'COMPRA';
+  if (!d) return { label: 'Sin veredicto', cls: 'bg-card text-muted', text: '' };
+  if (d.verdict && d.change != null) {
+    const moved = `${d.change > 0 ? 'subió' : 'bajó'} ${pct(Math.abs(d.change)).replace('+', '')} en dólares a los ${d.days} días`;
+    if (d.verdict === 'NEUTRAL') return { label: 'Neutral', cls: 'bg-card text-muted', text: `El precio casi no se movió (${pct(d.change)} en dólares a los ${d.days} días).` };
+    const hit = d.verdict === 'ACIERTO';
+    return {
+      label: hit ? 'Acierto' : 'Error',
+      cls: hit ? 'bg-up/15 text-up' : 'bg-down/15 text-down',
+      text: buy ? `Después de comprar, el precio ${moved}.` : `Después de vender, el precio ${moved}.`,
+    };
+  }
+  if (d.noData) return { label: 'Sin datos', cls: 'bg-card text-muted', text: 'No hay precios guardados de esa época para evaluarla.' };
+  return {
+    label: 'Esperando',
+    cls: 'bg-card text-muted',
+    text: `Todavía no pasaron 30 días.${d.sinceChange != null ? ` Hasta hoy: ${pct(d.sinceChange)} en dólares.` : ''}`,
+  };
+}
+
+/** La tarjeta que aparece al pasar el cursor por una marca: qué hiciste, por qué y cómo salió. */
+function OperationCard({ op, currency }: { op: Operation; currency: Currency }) {
+  const o = outcome(op);
+  const missed = op.decision?.missed;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">
+          {op.type === 'COMPRA' ? 'Compra' : 'Venta'} · {fmtDate(op.date)}
+        </span>
+        <span className={`rounded-sm px-2 py-0.5 text-[11px] font-medium ${o.cls}`}>{o.label}</span>
+      </div>
+      <p className="tabular text-xs text-muted">
+        {num(op.quantity)} a {money(op.priceConv, currency)} = {money(op.totalConv, currency)}
+      </p>
+      {op.note_title || op.note_body ? (
+        <div className="rounded-md bg-card px-2.5 py-2">
+          <p className="text-[11px] text-muted">Por qué lo hiciste</p>
+          {op.note_title && <p className="text-sm">“{op.note_title}”</p>}
+          {op.note_body && <p className="mt-0.5 text-xs leading-relaxed text-muted">{clip(op.note_body, 220)}</p>}
+        </div>
+      ) : (
+        <p className="text-xs text-muted">No anotaste por qué. Podés agregarlo abriendo la operación.</p>
+      )}
+      {op.firstImageId != null && <img src={imageUrl(op.firstImageId)} alt="" className="max-h-28 w-full rounded-md object-cover" loading="lazy" />}
+      {o.text && <p className="text-xs leading-relaxed">{o.text}</p>}
+      {op.type === 'VENTA' && op.realized != null && (
+        <p className="tabular text-xs">
+          Con esta venta {op.realized >= 0 ? 'ganaste' : 'perdiste'} <span className={tone(op.realized)}>{money(Math.abs(op.realized), currency)}</span>
+          {op.realizedPct != null && <span className="text-muted"> ({pct(op.realizedPct)})</span>}.
+        </p>
+      )}
+      {missed != null && Math.abs(missed) >= 0.005 && (
+        <p className="tabular text-xs">
+          Al precio de hoy, {missed > 0 ? 'dejaste de ganar' : 'te ahorraste de perder'}{' '}
+          <span className={missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(missed), currency)}</span>.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function PriceChart({
   series,
@@ -116,6 +195,8 @@ export function PriceChart({
   const [mas, setMas] = useState<Record<MaKey, boolean>>({ ma50: false, ma200: false });
   const [showAvg, setShowAvg] = useState(true);
   const [hover, setHover] = useState<Hover | null>(null);
+  const [card, setCard] = useState<Card | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!container.current || series.length === 0) return;
@@ -191,26 +272,49 @@ export function PriceChart({
     );
 
     const dates = series.map((p) => p.date);
+    // El gráfico como diario: la flecha dice si compraste (▲, abajo) o vendiste (▼, arriba);
+    // el color, cómo salió: verde acierto, rojo error, gris si todavía no hay veredicto.
+    const opsByDate = new Map<string, Operation[]>();
+    for (const op of operations) {
+      const day = snapToSeries(dates, op.date);
+      opsByDate.set(day, [...(opsByDate.get(day) ?? []), op]);
+    }
     const markers: SeriesMarker<Time>[] = operations
       .map((op) => ({
         time: snapToSeries(dates, op.date) as Time,
         position: op.type === 'COMPRA' ? ('belowBar' as const) : ('aboveBar' as const),
-        color: op.type === 'COMPRA' ? UP : DOWN,
-        shape: candles ? (op.type === 'COMPRA' ? ('arrowUp' as const) : ('arrowDown' as const)) : ('circle' as const),
+        color: verdictColor(op),
+        shape: op.type === 'COMPRA' ? ('arrowUp' as const) : ('arrowDown' as const),
         size: 1.4,
-        text: `${op.type === 'COMPRA' ? 'Compra' : 'Venta'} ${num(op.quantity)}`,
+        text: op.type === 'COMPRA' ? 'C' : 'V',
       }))
       .sort((a, b) => String(a.time).localeCompare(String(b.time)));
     createSeriesMarkers(main, markers);
 
     const byDate = new Map(series.map((p) => [p.date, p]));
     chart.subscribeCrosshairMove((param) => {
-      const p = param.time ? byDate.get(timeToIso(param.time)) : undefined;
+      const day = param.time ? timeToIso(param.time) : '';
+      const p = byDate.get(day);
       setHover(p ? { date: p.date, open: p.open, high: p.high, low: p.low, close: p.close } : null);
+      // Si ese día hubo operaciones, se muestra su tarjeta al lado del cursor
+      const ops = opsByDate.get(day);
+      setCard(ops && param.point ? { x: param.point.x, y: param.point.y, ops } : null);
+    });
+    // Un clic sobre un día con operaciones abre la operación (la primera, si hubo varias)
+    chart.subscribeClick((param) => {
+      const ops = param.time ? opsByDate.get(timeToIso(param.time)) : undefined;
+      if (ops?.length) navigate(`/operacion/${ops[0].id}`);
     });
 
     if (savedRange.current) chart.timeScale().setVisibleLogicalRange(savedRange.current);
-    else applyRange(chart, series, range);
+    else {
+      applyRange(chart, series, range);
+      // El gráfico toma su ancho real un instante después de crearse. Si el rango se ajusta solo
+      // antes, los primeros días (y la marca de la primera compra) quedan fuera, a la izquierda.
+      requestAnimationFrame(() => {
+        if (chartRef.current === chart) applyRange(chart, series, range);
+      });
+    }
     return () => {
       savedRange.current = chart.timeScale().getVisibleLogicalRange();
       chart.remove();
@@ -218,7 +322,7 @@ export function PriceChart({
     };
     // El rango se aplica en el efecto de abajo para no recrear el gráfico
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series, operations, currency, candles, mas, showAvg, avgCost]);
+  }, [series, operations, currency, candles, mas, showAvg, avgCost, navigate]);
 
   useEffect(() => {
     if (chartRef.current && series.length) applyRange(chartRef.current, series, range);
@@ -298,7 +402,42 @@ export function PriceChart({
         </div>
       </div>
 
-      <div ref={container} className="h-80 w-full md:h-96" />
+      <div className="relative">
+        <div ref={container} className="h-80 w-full md:h-96" />
+        {card && (
+          <div
+            className="pointer-events-none absolute z-10 flex flex-col gap-3 rounded-lg border border-line bg-panel p-3 shadow-xl shadow-black/50"
+            style={{
+              width: CARD_WIDTH,
+              // A la derecha del cursor; si no entra, a la izquierda
+              left: Math.max(0, card.x + CARD_WIDTH + 24 > (container.current?.clientWidth ?? 0) ? card.x - CARD_WIDTH - 16 : card.x + 16),
+              top: 8,
+            }}
+          >
+            {card.ops.slice(0, 2).map((op) => (
+              <OperationCard key={op.id} op={op} currency={currency} />
+            ))}
+            {card.ops.length > 2 && <p className="text-xs text-muted">y {card.ops.length - 2} operaciones más ese día</p>}
+            <p className="text-[11px] text-muted">Clic para abrir la operación</p>
+          </div>
+        )}
+      </div>
+
+      {operations.length > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+          <span>▲ compra · ▼ venta</span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-up" /> acierto
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-down" /> error
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-muted" /> neutral o sin veredicto todavía
+          </span>
+          <span>Pasá el cursor por una marca para ver por qué la hiciste y cómo salió.</span>
+        </p>
+      )}
 
       {(mas.ma50 || mas.ma200) && (
         <p className="mt-2 text-xs text-muted">

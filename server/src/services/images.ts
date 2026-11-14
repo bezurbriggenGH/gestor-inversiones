@@ -53,6 +53,12 @@ export function imageCounts(userId: number): Map<number, number> {
   return new Map(rows.map((r) => [r.operation_id, r.n]));
 }
 
+/** La primera foto de cada operación del usuario (para mostrarla en miniatura en el gráfico). */
+export function firstImageIds(userId: number): Map<number, number> {
+  const rows = all<{ operation_id: number; id: number }>('SELECT operation_id, MIN(id) AS id FROM operation_images WHERE user_id = ? GROUP BY operation_id', userId);
+  return new Map(rows.map((r) => [r.operation_id, r.id]));
+}
+
 export function addImage(userId: number, operationId: number, data: Uint8Array): number {
   if (!get('SELECT 1 FROM operations WHERE id = ? AND user_id = ?', operationId, userId)) throw new HttpError(404, 'Operación no encontrada');
   if (data.length === 0) throw new HttpError(400, 'La foto está vacía');

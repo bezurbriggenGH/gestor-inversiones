@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { DateSeries, computePosition, convertOp } from '../src/services/portfolio.ts';
-import { buildJournal } from '../src/services/journal.ts';
+import { buildJournal, decisionOf } from '../src/services/journal.ts';
 
 describe('Resultado de cada venta', () => {
   test('el % se calcula sobre lo que habían costado las acciones vendidas', () => {
@@ -60,5 +60,28 @@ describe('Diario de decisiones: sin precios de la época no se juzga', () => {
     assert.equal(entry.verdict, null);
     // A 180 días (01/07) todavía no hay precio posterior guardado: sigue pendiente, no "sin datos"
     assert.equal('noData' in entry.horizons.find((x) => x.days === 180)!, false);
+  });
+});
+
+describe('Lo que se marca en el gráfico de un activo', () => {
+  test('la compra de AAA (subió en pesos, bajó 12% en dólares) queda como error a 90 días', () => {
+    const [entry] = buildJournal(1, 'ARS', 'bolsa', 'AAA').entries;
+    const d = decisionOf(entry);
+    assert.equal(d.verdict, 'ERROR');
+    assert.equal(d.days, 90);
+    assert.ok(near(d.change!, -0.12));
+    assert.equal(d.missed, null); // no es una venta
+    assert.equal(d.noData, false);
+  });
+
+  test('pidiendo un activo, vienen solo sus operaciones', () => {
+    assert.equal(buildJournal(1, 'ARS', 'bolsa', 'AAA').entries.length, 1);
+    assert.equal(buildJournal(2, 'ARS', 'bolsa', 'AAA').entries.length, 0); // el otro usuario no tiene AAA
+  });
+
+  test('sin precios de la época: sin veredicto y marcada como "sin datos"', () => {
+    const d = decisionOf(buildJournal(2, 'ARS', 'bolsa', 'NUE').entries[0]);
+    assert.equal(d.verdict, null);
+    assert.equal(d.noData, true);
   });
 });
