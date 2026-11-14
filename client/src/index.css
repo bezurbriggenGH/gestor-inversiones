@@ -39,3 +39,23 @@ body {
 input, select, textarea {
   color-scheme: dark;
 }
+
+/* Al imprimir o guardar como PDF: fondo blanco y texto oscuro, para que se lea y no gaste tinta */
+@media print {
+  :root {
+    --color-bg: #ffffff;
+    --color-panel: #ffffff;
+    --color-card: #f3f3f4;
+    --color-line: #cfd0d4;
+    --color-text: #17181a;
+    --color-muted: #5c5d63;
+    --color-up: #2f7a48;
+    --color-down: #b03a36;
+  }
+  section {
+    border: 1px solid var(--color-line);
+  }
+  @page {
+    margin: 14mm;
+  }
+}

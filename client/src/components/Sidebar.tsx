@@ -54,10 +54,11 @@ export function Sidebar() {
     { to: '/diario', label: 'Diario de decisiones' },
     { to: '/alertas', label: 'Alertas', badge: unseen },
     { to: '/importar', label: 'Importar operaciones' },
+    { to: '/informe', label: 'Informe (PDF)' },
   ];
 
   return (
-    <aside className="flex shrink-0 flex-col gap-6 bg-sidebar p-4 md:sticky md:top-0 md:h-screen md:w-60 md:overflow-y-auto">
+    <aside className="flex shrink-0 flex-col gap-6 bg-sidebar p-4 print:hidden md:sticky md:top-0 md:h-screen md:w-60 md:overflow-y-auto">
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-3 rounded-lg bg-bg px-3 py-2.5">
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-card text-xs font-semibold">{initials(user?.name ?? '')}</div>
