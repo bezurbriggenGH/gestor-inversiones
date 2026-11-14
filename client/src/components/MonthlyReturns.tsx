@@ -36,8 +36,8 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-medium">Rendimiento mes a mes</h2>
         <p className="tabular text-sm text-muted">
-          {positive} de {months.length} meses en positivo · mejor {label(best.month)} <span className="text-up">{short(best.return)}</span> · peor{' '}
-          {label(worst.month)} <span className="text-down">{short(worst.return)}</span>
+          {positive} de {months.length} meses en positivo · mejor {label(best.month)} <span className={best.return >= 0 ? 'text-up' : 'text-down'}>{short(best.return)}</span> · peor{' '}
+          {label(worst.month)} <span className={worst.return >= 0 ? 'text-up' : 'text-down'}>{short(worst.return)}</span>
         </p>
       </div>
 

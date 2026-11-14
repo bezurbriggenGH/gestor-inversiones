@@ -156,8 +156,10 @@ export function Insights({ data, history }: { data: Portfolio; history?: History
       tone: 'info',
       text: (
         <>
-          De lo que tenés hoy, la que más gana es {b(best.ticker)} ({b(pct(best.unrealizedPct), tone(best.unrealizedPct))}) y la que más
-          pierde, {b(worst.ticker)} ({b(pct(worst.unrealizedPct), tone(worst.unrealizedPct))}).
+          {/* Si todas ganan, la última no "pierde": es la que menos gana (y al revés si todas pierden) */}
+          De lo que tenés hoy, {best.unrealizedPct >= 0 ? 'la que más gana' : 'la que menos pierde'} es {b(best.ticker)} (
+          {b(pct(best.unrealizedPct), tone(best.unrealizedPct))}) y {worst.unrealizedPct < 0 ? 'la que más pierde' : 'la que menos gana'},{' '}
+          {b(worst.ticker)} ({b(pct(worst.unrealizedPct), tone(worst.unrealizedPct))}).
           {worst.unrealizedPct < 0 && (
             <>
               {' '}
