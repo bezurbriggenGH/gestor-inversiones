@@ -216,3 +216,41 @@ describe('Importar un archivo: las mismas reglas que al cargar a mano', () => {
     assert.deepEqual(detalle.body.operations.map((o: { date: string }) => o.date), ['2025-01-02']);
   });
 });
+
+describe('Alertas', () => {
+  test('rechaza un precio que no es un número de verdad ("Infinity")', async () => {
+    const r = await call('POST', '/alerts', { ticker: 'AAA', direction: 'ABAJO', price: 'Infinity' });
+    assert.equal(r.status, 400);
+    assert.equal((await call('GET', '/alerts')).body.length, 0); // antes quedaba guardada y se disparaba sola
+  });
+
+  test('una alerta normal se guarda', async () => {
+    assert.equal((await call('POST', '/alerts', { ticker: 'AAA', direction: 'ABAJO', price: 50 })).status, 201);
+  });
+});
+
+describe('Importar un ticker que la app no conoce', () => {
+  const csv = 'Fecha;Tipo;Ticker;Cantidad;Precio\n02/01/2025;Compra;ZZZ;1;100';
+  const real = globalThis.fetch;
+  /** Reemplaza a Yahoo por uno de mentira (los pedidos al servidor de prueba pasan igual). */
+  const yahoo = (answer: () => Promise<globalThis.Response>) => {
+    globalThis.fetch = ((url: Parameters<typeof fetch>[0], init?: RequestInit) => (String(url).startsWith(base) ? real(url, init) : answer())) as typeof fetch;
+  };
+  after(() => {
+    globalThis.fetch = real;
+  });
+
+  test('sin internet: avisa que no se pudo consultar, no que el ticker no existe', async () => {
+    yahoo(() => Promise.reject(new TypeError('fetch failed')));
+    const [fila] = (await call('POST', '/import', { csv, commit: false })).body.rows as { status: string; errors: string[] }[];
+    assert.equal(fila.status, 'error');
+    assert.match(fila.errors.join(), /no se pudo consultar Yahoo Finance/);
+    assert.doesNotMatch(fila.errors.join(), /no encontramos/);
+  });
+
+  test('con internet y un ticker que no existe: "no encontramos ZZZ en BYMA"', async () => {
+    yahoo(() => Promise.resolve(new globalThis.Response('{}', { status: 404 })));
+    const [fila] = (await call('POST', '/import', { csv, commit: false })).body.rows as { status: string; errors: string[] }[];
+    assert.match(fila.errors.join(), /no encontramos ZZZ en BYMA/);
+  });
+});

@@ -100,6 +100,8 @@ function splitLine(line: string, sep: string): string[] {
 /** "1.234,56" → 1234.56 · "1234.56" → 1234.56 · "12.000" → 12000 · "$ 3,5" → 3.5 */
 export function parseNumber(raw: string | undefined): number | null {
   if (raw == null) return null;
+  // Excel a veces exporta los números grandes como "1E+05" o "1.5e3"
+  if (/^-?\d+(\.\d+)?e[+-]?\d+$/i.test(raw.trim())) return Number(raw.trim());
   let s = raw.replace(/[^\d.,-]/g, '');
   if (!s) return null;
   const lastDot = s.lastIndexOf('.');
@@ -130,11 +132,13 @@ function readDate(raw: string | undefined): string | null {
   if (!raw) return null;
   const t = raw.trim();
   // Excel guarda las fechas como días desde el 30/12/1899 (45973 = 12/11/2025)
-  if (/^\d{5}(\.0+)?$/.test(t)) {
-    const n = Number(t);
+  // (con decimales si la celda también tiene la hora: 45973,75 = 12/11/2025 a las 18:00)
+  if (/^\d{5}(\.\d+)?$/.test(t)) {
+    const n = Math.floor(Number(t));
     if (n > 30000 && n < 80000) return new Date(Date.UTC(1899, 11, 30) + n * 86_400_000).toISOString().slice(0, 10);
   }
-  const s = t.slice(0, 10);
+  // Solo la fecha: "2/11/2026 10:30" o "2026-11-02T10:30" traen también la hora
+  const s = t.split(/[\sT]/)[0];
   let m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
   m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);

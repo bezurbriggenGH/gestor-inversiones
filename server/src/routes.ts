@@ -333,6 +333,8 @@ router.post('/alerts', (req, res) => {
   const price = Number(req.body?.price);
   if (direction !== 'ARRIBA' && direction !== 'ABAJO') throw new HttpError(400, 'Dirección inválida');
   if (!(price > 0)) throw new HttpError(400, 'El precio debe ser mayor a 0');
+  // "Infinity" también es mayor a 0: se guardaba vacío y la alerta se disparaba sola
+  if (!Number.isFinite(price) || price > MAX_PRICE) throw new HttpError(400, 'El precio es demasiado grande');
   const id = Number(run('INSERT INTO alerts (user_id, ticker, direction, price) VALUES (?, ?, ?, ?)', uid, ticker, direction, price).lastInsertRowid);
   checkAlerts(ticker);
   res.status(201).json({ id });
@@ -386,11 +388,14 @@ router.post('/import', async (req, res) => {
   // Verificar que cada ticker exista en BYMA (se agrega al catálogo global si hace falta)
   const tickers = [...new Set(rows.filter((r) => r.ticker && !r.errors.length && !r.ignored).map((r) => r.ticker as string))];
   const unknown = new Set<string>();
+  // No es lo mismo "ese ticker no existe" que "no se pudo preguntar" (sin internet, Yahoo caído)
+  const unreachable = new Set<string>();
   for (const t of tickers) {
     try {
       await ensureCatalogAsset(t);
-    } catch {
-      unknown.add(t);
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 404) unknown.add(t);
+      else unreachable.add(t);
     }
   }
 
@@ -398,6 +403,9 @@ router.post('/import', async (req, res) => {
   for (const r of rows) {
     if (r.ticker && unknown.has(r.ticker)) {
       r.errors.push(`no encontramos ${r.ticker} en BYMA (por ahora la app maneja acciones y CEDEARs; bonos y fondos todavía no)`);
+    }
+    if (r.ticker && unreachable.has(r.ticker)) {
+      r.errors.push(`no se pudo consultar Yahoo Finance para verificar ${r.ticker}: revisá la conexión y probá de nuevo`);
     }
     if (r.date && r.date > today) r.errors.push('fecha futura');
     // Las mismas reglas que al cargar a mano (después de pasar a pesos los dividendos en dólares)

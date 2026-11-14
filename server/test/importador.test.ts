@@ -47,3 +47,16 @@ describe('Fechas del archivo del broker', () => {
     assert.equal(parseDate('12/25/2025'), null);
   });
 });
+
+describe('Formatos que exporta Excel', () => {
+  test('un número grande escrito como "1E+05" es cien mil (antes se leía 15)', () => {
+    assert.equal(parseNumber('1E+05'), 100_000);
+    assert.equal(parseNumber('1.5e3'), 1500);
+  });
+
+  test('una fecha con hora se lee igual: vale el día', () => {
+    assert.equal(parseDate('2/11/2026 10:30'), '2026-11-02');
+    assert.equal(parseDate('2026-11-02T10:30:00'), '2026-11-02');
+    assert.equal(parseDate('45973.75'), '2025-11-12'); // número de fecha de Excel, a las 18:00
+  });
+});
