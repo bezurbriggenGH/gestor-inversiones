@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { buildCosts, buildHoldComparison } from '../src/services/review.ts';
-import { buildJournal } from '../src/services/journal.ts';
+import { buildJournal, decisionOf } from '../src/services/journal.ts';
 
 let nextUser = 1;
 /** Un usuario nuevo con sus operaciones: [ticker, tipo, fecha, cantidad, precio, comisión]. */
@@ -139,5 +139,75 @@ describe('Patrones del Diario', () => {
     assert.deepEqual([s.acciones.judged, s.acciones.hits], [1, 1]);
     assert.deepEqual([s.cedears.judged, s.cedears.hits], [1, 0]);
     assert.equal(s.all.hitRate, 0.5);
+  });
+});
+
+describe('Ventas con ganancia (compras y ventas muy desparejas)', () => {
+  // Compro 10, vendo 2, compro 4, vendo 1, vendo 3, vendo 5, compro 15.
+  // Promedio: $100 hasta la segunda compra; después (8 × $100 + 4 × $200) ÷ 12 = $133,33.
+  const id = user([
+    ['AAA', 'COMPRA', '2025-01-02', 10, 100],
+    ['AAA', 'VENTA', '2025-01-10', 2, 130], // 2 × ($130 − $100) = +$60
+    ['AAA', 'COMPRA', '2025-01-20', 4, 200],
+    ['AAA', 'VENTA', '2025-02-03', 1, 150], // 1 × ($150 − $133,33) = +$16,67 (aunque lo último lo compré a $200)
+    ['AAA', 'VENTA', '2025-02-10', 3, 120], // 3 × ($120 − $133,33) = −$40
+    ['AAA', 'VENTA', '2025-02-20', 5, 180], // 5 × ($180 − $133,33) = +$233,33
+    ['AAA', 'COMPRA', '2025-03-03', 15, 160],
+  ]);
+
+  test('gané en 3 de 4 ventas: $310 en las buenas y $40 en la mala', () => {
+    const c = buildJournal(id, 'ARS', 'bolsa').closed;
+    assert.deepEqual([c.count, c.wins, c.losses], [4, 3, 1]);
+    assert.ok(near(c.gained, 60 + 50 / 3 + 700 / 3)); // $310
+    assert.ok(near(c.lost, 40));
+    assert.equal(c.winRate, 0.75);
+  });
+
+  test('cada venta trae su resultado; las compras, no', () => {
+    const entries = buildJournal(id, 'ARS', 'bolsa').entries.filter((e) => e.type === 'VENTA').reverse();
+    assert.ok(near(entries[0].realized!, 60));
+    assert.ok(near(entries[2].realized!, -40));
+    assert.equal(buildJournal(id, 'ARS', 'bolsa').entries.find((e) => e.type === 'COMPRA')!.realized, null);
+  });
+});
+
+describe('Una orden de venta partida en varias cuenta como una sola', () => {
+  // El broker ejecutó la venta de 6 en tres partes el mismo día: 2 ganando y 1 perdiendo
+  const id = user([
+    ['AAA', 'COMPRA', '2025-01-02', 10, 100],
+    ['AAA', 'VENTA', '2025-01-10', 2, 130], // +$60
+    ['AAA', 'VENTA', '2025-01-10', 2, 120], // +$40
+    ['AAA', 'VENTA', '2025-01-10', 2, 90], // −$20
+  ]);
+
+  test('es una venta con ganancia de $80, no dos ganadoras y una perdedora', () => {
+    const c = buildJournal(id, 'ARS', 'bolsa').closed;
+    assert.deepEqual([c.count, c.wins, c.losses], [1, 1, 0]);
+    assert.ok(near(c.gained, 80));
+    assert.equal(c.lost, 0);
+  });
+});
+
+describe('Compra con mal momento, pero vendida antes con ganancia', () => {
+  // Compro 10 BBB a $20 en marzo y las vendo a los pocos días a $40. A los 90 días el precio... no importa:
+  // lo que se informa es que dentro del plazo vendí 10 y gané 10 × ($40 − $20) = $200.
+  const id = user([
+    ['BBB', 'COMPRA', '2025-03-03', 10, 20],
+    ['BBB', 'VENTA', '2025-03-10', 10, 40],
+  ]);
+
+  test('la compra informa lo que se vendió dentro de su plazo y con qué resultado', () => {
+    const compra = buildJournal(id, 'ARS', 'bolsa').entries.find((e) => e.type === 'COMPRA')!;
+    assert.deepEqual(compra.soldWithin, { quantity: 10, realized: 200 });
+    assert.deepEqual(decisionOf(compra).soldWithin, { quantity: 10, realized: 200 }); // llega también al gráfico
+  });
+
+  test('una venta posterior al plazo no se le atribuye a la compra', () => {
+    // Compro en enero (se juzga a 90 días: hasta el 02/04) y vendo en junio
+    const otro = user([
+      ['AAA', 'COMPRA', '2025-01-02', 10, 100],
+      ['AAA', 'VENTA', '2025-06-02', 10, 200],
+    ]);
+    assert.equal(buildJournal(otro, 'ARS', 'bolsa').entries.find((e) => e.type === 'COMPRA')!.soldWithin, null);
   });
 });

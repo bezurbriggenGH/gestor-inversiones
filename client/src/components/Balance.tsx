@@ -1,9 +1,9 @@
 // Balance de tus decisiones: ¿operar te sumó o te restó?, cuánto pagaste en comisiones,
 // qué pasó con lo que vendiste y dónde acertás más. Se usan en la Comparativa, el Diario y el Informe.
 import { useState } from 'react';
-import type { Costs, HoldComparison, Journal, JournalStats } from '../api';
+import type { Costs, Currency, HoldComparison, Journal, JournalStats } from '../api';
 import { useCosts, useHold } from '../hooks';
-import { date, money, pct, todayIso, tone } from '../format';
+import { date, money, num, pct, todayIso, tone } from '../format';
 import { ErrorBox, Loading } from './ui';
 
 const share = (v: number) => pct(v).replace('+', '');
@@ -172,6 +172,57 @@ export function CostsSection() {
     <section className="flex flex-col gap-4 rounded-xl bg-panel p-5">
       <h2 className="font-medium">Cuánto te costó operar</h2>
       {isLoading ? <Loading label="Calculando…" /> : error || !data ? <ErrorBox error={error} /> : <CostsResult data={data} />}
+    </section>
+  );
+}
+
+/**
+ * En una compra: qué vendiste dentro del plazo en que se la juzga. El veredicto mira el momento
+ * (qué hizo el precio después); esto dice si, de todos modos, saliste ganando.
+ */
+export function soldWithinText(
+  e: { type: string; verdict: string | null; soldWithin: { quantity: number; realized: number } | null },
+  currency: Currency,
+): string | null {
+  const s = e.soldWithin;
+  if (e.type !== 'COMPRA' || !s) return null;
+  const result = `${s.realized >= 0 ? 'ganaste' : 'perdiste'} ${money(Math.abs(s.realized), currency)}`;
+  if (!e.verdict) return `Desde entonces vendiste ${num(s.quantity)} y ${result} con esas ventas.`;
+  // El caso que más confunde: el precio bajó después, pero ya habías vendido ganando (o al revés)
+  const but = (e.verdict === 'ERROR' && s.realized > 0) || (e.verdict === 'ACIERTO' && s.realized < 0) ? 'Pero dentro' : 'Dentro';
+  return `${but} de ese plazo vendiste ${num(s.quantity)} y ${result} con esas ventas.`;
+}
+
+/** Ventas con ganancia: en cuántas ganaste plata, y cuánto. */
+export function WinsSummary({ journal }: { journal: Journal }) {
+  const w = journal.closed;
+  const c = journal.currency;
+  if (w.count === 0) return null;
+  return (
+    <section className="flex flex-col gap-4 rounded-xl bg-panel p-5">
+      <h2 className="font-medium">Ventas con ganancia</h2>
+      <p className="text-lg">
+        Ganaste plata en <span className="tabular font-semibold">{w.wins}</span> de tus <span className="tabular font-semibold">{w.wins + w.losses}</span>{' '}
+        ventas{w.winRate != null && <span className="tabular text-muted"> ({share(w.winRate)})</span>}.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg bg-card px-4 py-3">
+          <p className="text-xs text-muted">En las que ganaste</p>
+          <p className="tabular mt-1 text-xl font-semibold text-up">{money(w.gained, c, true)}</p>
+          <p className="tabular text-xs text-muted">{w.wins > 0 ? `${money(w.gained / w.wins, c)} por venta, en promedio` : 'ninguna'}</p>
+        </div>
+        <div className="rounded-lg bg-card px-4 py-3">
+          <p className="text-xs text-muted">En las que perdiste</p>
+          <p className="tabular mt-1 text-xl font-semibold text-down">{money(-w.lost, c, true)}</p>
+          <p className="tabular text-xs text-muted">{w.losses > 0 ? `${money(w.lost / w.losses, c)} por venta, en promedio` : 'ninguna'}</p>
+        </div>
+      </div>
+      <p className="text-xs text-muted">
+        Es otra cosa que los aciertos de arriba: acá no importa qué hizo el precio después, sino si cobraste más de lo que te habían costado
+        esas acciones (a tu precio promedio, comisiones incluidas). Mirá el porcentaje junto con los montos: se puede ganar en casi todas las
+        ventas y perder plata si la única mala fue grande. Las ventas del mismo activo en el mismo día cuentan como una.
+        {c === 'ARS' && ' En pesos la inflación ayuda: con el tiempo casi cualquier venta da ganancia. Pasá a dólares para verlo sin ese efecto.'}
+      </p>
     </section>
   );
 }

@@ -200,8 +200,15 @@ export function ReportPage() {
         </div>
         <p className="text-sm text-muted">
           {j.stats.all.hits} aciertos de {j.stats.all.judged} operaciones evaluadas ({j.stats.all.total} en total). Una compra es acierto si a
-          los 90 días el precio subió en dólares; una venta, si bajó.
+          los 90 días el precio subió en dólares; una venta, si bajó. Mide el momento de cada decisión, no si se ganó plata.
         </p>
+        {j.closed.count > 0 && (
+          <p className="tabular text-sm">
+            Ganaste plata en {j.closed.wins} de {j.closed.wins + j.closed.losses} ventas
+            {j.closed.winRate != null && ` (${share(j.closed.winRate)})`}: {money(j.closed.gained, currency, true, true)} en las buenas y{' '}
+            {money(-j.closed.lost, currency, true, true)} en las malas, contra tu precio promedio.
+          </p>
+        )}
         {j.sold.count > 0 && (
           <p className="tabular text-sm">
             De tus {j.sold.count} ventas: después de {j.sold.savedCount} el precio bajó (te ahorraste {money(j.sold.saved, currency, false, true)}) y

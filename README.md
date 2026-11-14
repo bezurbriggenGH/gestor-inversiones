@@ -162,7 +162,7 @@ client/src/
 - **Benchmarks**: cada compra "compra" unidades de la alternativa y cada venta o dividendo "vende" unidades.
 - **TIR**: tasa anual que iguala a cero el valor presente de todos los flujos (incluido el valor actual).
 - **Plazo fijo**: tasa de depósitos a 30 días, renovado cada mes (capitalización mensual).
-- **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%.
+- **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%. Mide el momento de cada decisión, no si se ganó plata: eso se ve aparte en "Ventas con ganancia" (resultado de cada venta contra el precio promedio).
 - **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias.
 - **Splits**: una operación anterior a un split se multiplica en cantidad y se divide en precio por el factor del split; el monto total no cambia. Si el split deja una fracción de acción, se toma como cobrada en efectivo al precio de ese día (el broker solo acredita acciones enteras).
 - **Variación del día**: valor de hoy − valor de ayer − plata puesta hoy; lo comprado hoy se mide contra lo que pagaste.

@@ -16,6 +16,7 @@ import {
 import { useNavigate } from 'react-router';
 import { imageUrl, type Currency, type Operation, type PricePoint } from '../api';
 import { date as fmtDate, money, num, pct, tone } from '../format';
+import { soldWithinText } from './Balance';
 
 const RANGES = [
   { label: '1M', days: 30 },
@@ -158,6 +159,9 @@ function OperationCard({ op, currency }: { op: Operation; currency: Currency }) 
       )}
       {op.firstImageId != null && <img src={imageUrl(op.firstImageId)} alt="" className="max-h-28 w-full rounded-md object-cover" loading="lazy" />}
       {o.text && <p className="text-xs leading-relaxed">{o.text}</p>}
+      {op.decision && soldWithinText({ type: op.type, verdict: op.decision.verdict, soldWithin: op.decision.soldWithin }, currency) && (
+        <p className="tabular text-xs">{soldWithinText({ type: op.type, verdict: op.decision.verdict, soldWithin: op.decision.soldWithin }, currency)}</p>
+      )}
       {op.type === 'VENTA' && op.realized != null && (
         <p className="tabular text-xs">
           Con esta venta {op.realized >= 0 ? 'ganaste' : 'perdiste'} <span className={tone(op.realized)}>{money(Math.abs(op.realized), currency)}</span>

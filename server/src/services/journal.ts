@@ -5,12 +5,20 @@
 // - Venta:  acierto si después bajó (vendiste antes de una caída), error si subió.
 // Entre −2% y +2% se considera neutral.
 //
+// El veredicto mira el MOMENTO de cada decisión, no si ganaste plata. Son dos cosas distintas:
+// compro a $1.000, vendo a $2.000 a los 5 días y después cae a $100 → el momento de la compra fue
+// malo (a los 30 días valía 90% menos), pero con la operación gané el doble. Y al revés: compro a
+// $1.000, vendo a $900 por miedo y después sube a $3.000 → elegí bien y salí mal.
+// Por eso, además del veredicto, se informa:
+// - "Ventas con ganancia": en cuántas ventas ganaste plata (contra tu precio promedio) y cuánto.
+// - En cada compra, si vendiste dentro del plazo en que se la juzga y con qué resultado.
+//
 // Los cambios de precio se miden SIEMPRE en dólares, aunque estés viendo la app en pesos:
 // con inflación, casi cualquier precio en pesos sube más de 2% en 90 días, y entonces
 // casi todas las compras parecerían aciertos y casi todas las ventas, errores.
 import { all } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
-import { DateSeries, getOperations, loadFx, makeConverter, sortOps, type Currency } from './portfolio.ts';
+import { DateSeries, computePosition, getOperations, loadFx, makeConverter, sortOps, type Currency, type OperationRow } from './portfolio.ts';
 
 export const HORIZONS = [30, 90, 180] as const;
 const MAIN_HORIZON = 90;
@@ -36,7 +44,18 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
   const conv = makeConverter(currency, fx); // para mostrar precios en la moneda elegida
   const judgeConv = makeConverter(fx.empty ? 'ARS' : 'USD', fx); // para medir si acertaste
   // Las fracciones que deja un split no son decisiones tuyas: no se juzgan
-  const ops = sortOps(getOperations(userId, ticker)).filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
+  const allOps = getOperations(userId, ticker);
+  const ops = sortOps(allOps).filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
+
+  // Cuánto se ganó o perdió en cada venta, contra el precio promedio de ese momento (el mismo
+  // cálculo de la cartera). Con precio promedio no existe "la compra de esta venta": las acciones
+  // no se distinguen entre sí, así que el resultado es de la venta, no de una compra en particular.
+  const realizedByOp = new Map<number, number>();
+  const opsByTicker = new Map<string, OperationRow[]>();
+  for (const op of allOps) opsByTicker.set(op.ticker, [...(opsByTicker.get(op.ticker) ?? []), op]);
+  for (const list of opsByTicker.values()) {
+    for (const [id, result] of computePosition(list, undefined, undefined, conv).realizedByOp) realizedByOp.set(id, result);
+  }
 
   const assetTypes = new Map(all<{ ticker: string; type: 'ACCION' | 'CEDEAR' }>('SELECT ticker, type FROM assets').map((a) => [a.ticker, a.type]));
   const priceCache = new Map<string, DateSeries>();
@@ -81,10 +100,27 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
         const usd = op.quantity * (s.at(lastDate) / fx.at(lastDate) - op.price / fx.at(op.date));
         missed = currency === 'USD' ? usd : usd * fx.at(lastDate);
       }
+      // En una compra: lo que vendiste de ese activo dentro del plazo en que se la juzga (o hasta
+      // hoy, si todavía no tiene veredicto) y cuánto ganaste con esas ventas. Sirve para no leer
+      // "error" en una compra que cerraste ganando antes de que el precio bajara.
+      let soldWithin: { quantity: number; realized: number } | null = null;
+      if (type === 'COMPRA') {
+        const until = main && main.available ? addDaysIso(op.date, main.days) : '9999-12-31';
+        const sales = ops.filter((o) => o.ticker === op.ticker && o.type === 'VENTA' && o.date >= op.date && o.date <= until);
+        if (sales.length > 0) {
+          soldWithin = {
+            quantity: sales.reduce((acc, o) => acc + o.quantity, 0),
+            realized: sales.reduce((acc, o) => acc + (realizedByOp.get(o.id) ?? 0), 0),
+          };
+        }
+      }
       return {
         id: op.id,
         ticker: op.ticker,
         assetType: assetTypes.get(op.ticker) ?? 'CEDEAR',
+        // En una venta: lo que ganaste o perdiste con ella, contra tu precio promedio
+        realized: type === 'VENTA' ? (realizedByOp.get(op.id) ?? null) : null,
+        soldWithin,
         missed,
         type,
         date: op.date,
@@ -129,10 +165,29 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     net: sales.reduce((acc, e) => acc - e.missed!, 0),
   };
 
+  // Ventas con ganancia: el "porcentaje de aciertos" clásico, en plata y no en momento.
+  // Las ventas del mismo activo en el mismo día cuentan como una sola (el broker suele partir una orden en varias).
+  const byDay = new Map<string, number>();
+  for (const e of entries) {
+    if (e.type === 'VENTA' && e.realized != null) byDay.set(`${e.ticker}|${e.date}`, (byDay.get(`${e.ticker}|${e.date}`) ?? 0) + e.realized);
+  }
+  const results = [...byDay.values()];
+  const wins = results.filter((r) => r > 0);
+  const losses = results.filter((r) => r < 0);
+  const closed = {
+    count: results.length,
+    wins: wins.length,
+    losses: losses.length,
+    gained: wins.reduce((a, r) => a + r, 0),
+    lost: losses.reduce((a, r) => a - r, 0),
+    winRate: wins.length + losses.length > 0 ? wins.length / (wins.length + losses.length) : null,
+  };
+
   return {
     currency,
     entries,
     sold,
+    closed,
     stats: {
       all: stats(entries),
       buys: stats(entries.filter((e) => e.type === 'COMPRA')),
@@ -159,6 +214,7 @@ export function decisionOf(entry: ReturnType<typeof buildJournal>['entries'][num
     change: main && main.available ? main.change : null,
     sinceChange: entry.sinceChange,
     missed: entry.missed,
+    soldWithin: entry.soldWithin,
     // Ya pasó el plazo, pero no hay precios guardados de esa época para juzgarla
     noData: !entry.verdict && entry.horizons.some((h) => !h.available && 'noData' in h),
   };

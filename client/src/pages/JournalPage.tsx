@@ -6,7 +6,7 @@ import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict, lacksPrices } from '../components/Verdict';
-import { Patterns, SoldSummary } from '../components/Balance';
+import { Patterns, SoldSummary, WinsSummary, soldWithinText } from '../components/Balance';
 
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
   return (
@@ -45,6 +45,11 @@ export function JournalPage() {
           venta, si bajó. Movimientos menores al 2% cuentan como neutrales. Los cambios se miden en dólares, aunque veas la app en pesos:
           así la inflación no hace que toda compra parezca un acierto.
         </p>
+        <p className="mt-2 text-sm text-muted">
+          El veredicto mira el <span className="text-text">momento</span> de cada decisión, no si ganaste plata. Si comprás, vendés al doble a
+          los 5 días y después el precio se derrumba, la compra figura como error de momento aunque hayas ganado: por eso en cada compra se
+          aclara si vendiste antes y con qué resultado, y más abajo está en cuántas ventas ganaste plata.
+        </p>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -55,6 +60,7 @@ export function JournalPage() {
       </section>
 
       <Patterns journal={data} />
+      <WinsSummary journal={data} />
       <SoldSummary journal={data} />
 
       <div className="flex flex-wrap gap-2">
@@ -89,6 +95,7 @@ export function JournalPage() {
               </div>
               {e.note_title && <p className="text-sm">“{e.note_title}”</p>}
               <p className="text-xs text-muted">{explainVerdict(e)}</p>
+              {soldWithinText(e, currency) && <p className="tabular text-xs">{soldWithinText(e, currency)}</p>}
               {e.missed != null && Math.abs(e.missed) >= 0.005 && (
                 <p className="tabular text-xs text-muted">
                   Al precio de hoy: {e.missed > 0 ? 'dejaste de ganar' : 'te ahorraste de perder'}{' '}

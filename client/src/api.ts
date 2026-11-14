@@ -119,6 +119,8 @@ export interface OperationDecision {
   sinceChange: number | null;
   /** Solo en ventas: plata que dejaste de ganar (+) o te ahorraste de perder (−), a valores de hoy. */
   missed: number | null;
+  /** Solo en compras: lo que vendiste de ese activo dentro del plazo del veredicto, y con qué resultado. */
+  soldWithin: { quantity: number; realized: number } | null;
   /** Ya pasó el plazo pero no hay precios guardados de esa época. */
   noData: boolean;
 }
@@ -239,6 +241,10 @@ export interface JournalEntry {
   assetType: AssetType;
   /** Solo en ventas: plata que dejaste de ganar (+) o te ahorraste de perder (−) por haber vendido, a valores de hoy. */
   missed: number | null;
+  /** Solo en ventas: lo que ganaste o perdiste con ella, contra tu precio promedio. */
+  realized: number | null;
+  /** Solo en compras: lo que vendiste de ese activo dentro del plazo del veredicto, y con qué resultado. */
+  soldWithin: { quantity: number; realized: number } | null;
 }
 
 export interface JournalStats {
@@ -257,6 +263,8 @@ export interface Journal {
   stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
   /** Qué pasó, en plata, con todo lo que vendiste. */
   sold: { count: number; missedCount: number; missed: number; savedCount: number; saved: number; net: number };
+  /** Ventas con ganancia: en cuántas ganaste plata y cuánto (las del mismo activo y día cuentan como una). */
+  closed: { count: number; wins: number; losses: number; gained: number; lost: number; winRate: number | null };
 }
 
 /** ¿Y si no hubieras comprado ni vendido nada desde `since`? */
