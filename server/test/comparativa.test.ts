@@ -1,0 +1,58 @@
+// Comparativa y simulador: casos que antes daban números engañosos.
+import './helpers.ts';
+import { describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { run } from '../src/db.ts';
+import { buildHistory } from '../src/services/history.ts';
+import { simulate } from '../src/services/simulator.ts';
+
+// Precios y dólar planos, e inflación en cero (UVA siempre 1): las cuentas se sacan a mano
+for (const date of ['2025-01-02', '2025-03-03', '2025-06-02', '2025-07-01']) {
+  run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, 1000)", date);
+  run("INSERT INTO index_values (series, date, value) VALUES ('uva', ?, 1)", date);
+}
+
+describe('Vendiste mucho más de lo que pusiste', () => {
+  // Compro 10 a $100 ($1.000). Triplica y vendo 8 a $300 ($2.400). Me quedan 2 que valen $600.
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (1, 'Prueba', 'prueba@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('AAA', 'AAA.BA', 'Prueba', 'ACCION')");
+  run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'AAA')");
+  for (const [date, px] of [['2025-01-02', 100], ['2025-06-02', 300], ['2025-07-01', 300]] as const) {
+    run("INSERT INTO prices (ticker, date, close) VALUES ('AAA', ?, ?)", date, px);
+  }
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (1, 'AAA', 'COMPRA', '2025-01-02', 10, 100)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (1, 'AAA', 'VENTA', '2025-06-02', 8, 300)");
+  const h = buildHistory(1, 'ARS', 'bolsa');
+
+  test('la ganancia contra la inflación se informa en plata y no como "0%"', () => {
+    // Con inflación cero, esa plata "valdría" 1.000 − 2.400 = −1.400: no hay porcentaje posible.
+    // Ganancia real = 600 − (−1.400) = 2.000, lo mismo que la ganancia en pesos.
+    assert.equal(h.realReturn!.pct, null);
+    assert.equal(h.realReturn!.gain, 2000);
+  });
+
+  test('la alternativa queda en −1.400 (no alcanzaba para esa venta) y no se le calcula porcentaje', () => {
+    const infl = h.benchmarks.find((b) => b.key === 'inflacion')!;
+    assert.equal(infl.value, -1400);
+    assert.equal(infl.diff, 2000);
+    assert.equal(infl.diffPct, null);
+  });
+
+  test('seis meses no se anualizan', () => {
+    assert.equal(h.portfolio!.irr, null);
+  });
+});
+
+describe('Simulador: dividendos netos de la retención', () => {
+  // $1.000 en una acción local a $100 → 10 acciones. Paga $10 por acción: $100 brutos, 7% de retención → $93.
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SIM', 'SIM.BA', 'Simulada', 'ACCION')");
+  for (const date of ['2025-01-02', '2025-03-03', '2025-07-01']) run("INSERT INTO prices (ticker, date, close) VALUES ('SIM', ?, 100)", date);
+  run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('SIM', '2025-03-03', 10)");
+
+  test('cobra $93, no $100, igual que la cartera', () => {
+    const sim = simulate('SIM', 1000, '2025-01-02', 'ARS', 'bolsa');
+    assert.ok(Math.abs(sim.dividendsCash - 93) < 1e-9);
+    const activo = sim.results.find((r) => r.key === 'activo')!;
+    assert.ok(activo.available && Math.abs(activo.value - 1093) < 1e-9);
+  });
+});

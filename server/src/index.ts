@@ -6,10 +6,11 @@ import { router } from './routes.ts';
 import { syncAll } from './services/sync.ts';
 import { cleanAllHistories } from './services/clean.ts';
 import { run } from './db.ts';
+import { trustProxy } from './util.ts';
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 1);
+app.set('trust proxy', trustProxy());
 
 // Encabezados de seguridad básicos
 app.use((_req, res, next) => {

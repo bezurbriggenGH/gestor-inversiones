@@ -71,7 +71,7 @@ export interface Portfolio {
     dayChange: number;
     dayChangePct: number;
   };
-  realReturn: { gain: number; pct: number; irr: number | null } | null;
+  realReturn: { gain: number; pct: number | null; irr: number | null } | null;
   positions: PortfolioPosition[];
   exposure: { sectors: ExposureGroup[]; countries: ExposureGroup[] };
   review: Review;
@@ -241,7 +241,7 @@ export interface History {
     frozen: boolean;
   }[];
   portfolio: { value: number; netInvested: number; gain: number; irr: number | null } | null;
-  realReturn: { gain: number; pct: number; irr: number | null } | null;
+  realReturn: { gain: number; pct: number | null; irr: number | null } | null;
   monthly: { month: string; return: number; gain: number }[];
 }
 

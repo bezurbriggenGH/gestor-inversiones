@@ -135,7 +135,7 @@ function Result({ sim }: { sim: Simulation }) {
         <div className="rounded-lg bg-panel px-4 py-3">
           <p className="text-xs text-muted">Dividendos cobrados</p>
           <p className="tabular mt-1 font-medium">{sim.dividendsCash > 0 ? money(sim.dividendsCash, currency) : 'No pagó'}</p>
-          <p className="text-xs text-muted">{sim.dividendsCash > 0 ? 'Ya incluidos en el resultado, antes de impuestos.' : 'En este período no hubo dividendos.'}</p>
+          <p className="text-xs text-muted">{sim.dividendsCash > 0 ? `Ya incluidos en el resultado, después de la retención habitual (${sim.type === 'ACCION' ? '7' : '30'}%).` : 'En este período no hubo dividendos.'}</p>
         </div>
       </section>
 

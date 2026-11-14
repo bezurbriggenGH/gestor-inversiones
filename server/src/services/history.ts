@@ -28,8 +28,8 @@ export const BENCHMARKS = {
   },
   dolar: { label: 'Dólar MEP', description: 'Haber comprado dólares MEP' },
   plazofijo: { label: 'Plazo fijo', description: 'Plazo fijo a 30 días renovado' },
-  merval: { label: 'Merval', description: 'Índice de las principales acciones argentinas' },
-  spy: { label: 'S&P 500', description: 'Las 500 mayores empresas de EE.UU. (CEDEAR SPY)' },
+  merval: { label: 'Merval', description: 'Índice de las principales acciones argentinas (solo precio, sin dividendos)' },
+  spy: { label: 'S&P 500', description: 'Las 500 mayores empresas de EE.UU. (CEDEAR SPY, solo precio, sin dividendos)' },
 } as const;
 export type BenchmarkKey = keyof typeof BENCHMARKS;
 
@@ -66,12 +66,20 @@ export function plazoFijoIndex(start: string, end: string): DateSeries {
   return new DateSeries(rows);
 }
 
+/**
+ * Lo mínimo que tiene que durar la inversión para expresar su rendimiento por año.
+ * Anualizar un período corto da números sin sentido: ganar 20% en dos meses se leería como
+ * casi +200% por año (1,2 elevado a 6). Las normas internacionales de rendimiento (GIPS)
+ * piden no anualizar períodos de menos de un año.
+ */
+export const MIN_IRR_YEARS = 1;
+
 /** TIR anual por bisección. flows: negativos = plata que pusiste, positivos = la que recibís. */
 export function xirr(flows: { date: string; amount: number }[]): number | null {
   if (flows.length < 2) return null;
   const t0 = Date.parse(flows[0].date);
   const years = flows.map((f) => (Date.parse(f.date) - t0) / (365 * 86_400_000));
-  if (years[years.length - 1] < 30 / 365) return null; // menos de un mes: no es representativo
+  if (years[years.length - 1] < MIN_IRR_YEARS) return null;
   const npv = (r: number) => flows.reduce((acc, f, i) => acc + f.amount / Math.pow(1 + r, years[i]), 0);
   let lo = -0.9999;
   let hi = 100;
@@ -217,7 +225,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
 
   // Ganancia real: contra inflación, siempre en pesos de hoy
   const inflIdx = indices.inflacion;
-  let realReturn: { gain: number; pct: number; irr: number | null } | null = null;
+  let realReturn: { gain: number; pct: number | null; irr: number | null } | null = null;
   if (!inflIdx.empty) {
     let inflUnits = 0;
     for (const f of flows) inflUnits += f.amount / inflIdx.at(f.date);
@@ -227,7 +235,10 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     // lado de la TIR nominal. Ejemplo: ganar 39% en un año con 35% de inflación es 1,39 / 1,35 − 1 ≈ 3% real.
     const realFlows = flows.map((f) => ({ date: f.date, amount: -f.amount / inflIdx.at(f.date) }));
     const irr = xirr([...realFlows, { date: last.date, amount: valueArs / inflIdx.at(last.date) }]);
-    realReturn = { gain: valueArs - inflValueArs, pct: inflValueArs > 0 ? valueArs / inflValueArs - 1 : 0, irr };
+    // Si sacaste más de lo que esa plata habría valido con inflación (vendiste muy por encima de lo que
+    // pusiste), lo que "tendrías" es negativo y no hay porcentaje posible: la diferencia se informa
+    // solo en plata. Antes daba 0%, como si hubieras empatado con la inflación.
+    realReturn = { gain: valueArs - inflValueArs, pct: inflValueArs > 0 ? valueArs / inflValueArs - 1 : null, irr };
   }
 
   return {

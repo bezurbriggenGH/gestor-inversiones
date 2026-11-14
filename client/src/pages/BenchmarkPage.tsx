@@ -130,10 +130,17 @@ export function BenchmarkPage() {
                 </td>
                 {b.available ? (
                   <>
-                    <td className="px-5 py-3 text-right">{money(b.value!, currency)}</td>
+                    {b.value! > 0 ? (
+                      <td className="px-5 py-3 text-right">{money(b.value!, currency)}</td>
+                    ) : (
+                      // Sacaste más de lo que habría valido esta alternativa: no te habría alcanzado para esas ventas
+                      <td className="px-5 py-3 text-right text-xs text-muted" title={`Con esta alternativa te faltarían ${money(-b.value!, currency)}`}>
+                        No te alcanzaba para sacar lo que sacaste
+                      </td>
+                    )}
                     <td className={`px-5 py-3 text-right font-medium ${tone(b.diff!)}`}>
                       {money(b.diff!, currency, true)}
-                      <span className="ml-1 text-xs">({pct(b.diffPct!)})</span>
+                      {b.diffPct != null && <span className="ml-1 text-xs">({pct(b.diffPct)})</span>}
                     </td>
                     <td className="px-5 py-3 text-right text-muted">{b.irr != null ? pct(b.irr) : '—'}</td>
                   </>
@@ -153,7 +160,8 @@ export function BenchmarkPage() {
       <p className="text-xs text-muted">
         Lo que sacaste con ventas y dividendos se descuenta igual en todas las alternativas, así que "Hoy tendrías" compara solo
         lo que sigue invertido. Inflación: índice UVA (sigue al CER). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
-        índice y del CEDEAR SPY. Fuentes: ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
+        índice y del CEDEAR SPY, sin dividendos (tu cartera sí los cuenta, así que contra esos dos la comparación te favorece un poco).
+        A cada alternativa le llega toda la plata que pusiste, comisiones incluidas, y no paga comisiones (eso te juega en contra). Fuentes: ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
       </p>
 
       {/* La otra comparación: contra vos mismo, si te hubieras quedado quieto */}

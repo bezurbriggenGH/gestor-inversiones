@@ -8,7 +8,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Cartera**: cuánto vale, cuánto ganaste en total (en lo que tenés, en ventas y en dividendos), rendimiento por año y contra la inflación.
 - **Resumen en palabras**: qué movió tu cartera hoy, cómo va el mes, si le ganás al dólar, tu mejor y peor inversión, y avisos de concentración.
 - **Datos de cada acción**: rango del último año, cuánto subió o bajó (1 mes a 5 años), cuánto se mueve en un día normal, peor caída y cuánto tiene que subir para volver a tu precio promedio.
-- **Simulador**: un monto en una fecha pasada contra dólar, plazo fijo, inflación y pesos guardados, con dividendos y el peor momento del camino.
+- **Simulador**: un monto en una fecha pasada contra dólar, plazo fijo, inflación y pesos guardados, con dividendos (netos de la retención habitual) y el peor momento del camino.
 - **Evolución**: gráfico del valor de la cartera contra la plata puesta, y TIR anual.
 - **Rendimiento mes a mes**: calendario con el rendimiento de cada mes y de cada año.
 - **Gráfico de cada activo**: línea o velas, medias móviles de 50 y 200 días, tus compras y ventas, y la línea de tu precio promedio.
@@ -100,16 +100,18 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | Archivo | Qué comprueba |
 |---|---|
 | `server/test/cartera.test.ts` | Precio promedio, ganancias, comisiones, dividendos, dólares, ventas de más |
-| `server/test/historia.test.ts` | TIR, rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
+| `server/test/historia.test.ts` | TIR (y que no se anualice con menos de un año), rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
+| `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta y que el Diario de decisiones juzgue en dólares |
 | `server/test/balance.test.ts` | ¿Y si no hubieras tocado nada?, comisiones, qué pasó con lo que vendiste y patrones del Diario |
 | `server/test/sincronizar.test.ts` | Pedidos a Yahoo: de a pocos, sin insistir después de un error |
-| `server/test/importador.test.ts` | Números y fechas de los archivos de los brokers |
+| `server/test/importador.test.ts` | Números ("1.234,56", "0.125") y fechas de los archivos de los brokers |
 | `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
 | `server/test/validaciones.test.ts` | Casos límite cargados desde la app: cantidades negativas o con decimales, ventas de más, fechas imposibles, dividendos imposibles, borrar activos |
-| `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña |
-| `server/test/importador.test.ts` | Números del archivo del broker ("1.234,56", "0.125") |
+| `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña, y que el límite de intentos no se esquive |
+| `server/test/diversificacion.test.ts` | Para revisar (concentración, sectores, activos que se mueven juntos) y objetivo de reparto |
+| `server/test/sueldo-y-gastos.test.ts` | Sueldo y gastos contra la inflación del INDEC |
 
 ## Tecnologías
 
@@ -145,14 +147,20 @@ actualización pide **solo los días que faltan**, así que aunque no se abra po
 server/src/
   providers/     → consultas a Yahoo, dólar e índices
   services/
-    sync.ts        → mantiene precios, dólar e índices al día
-    portfolio.ts   → cálculos contables (PPP, resultados, dividendos, conversión)
-    history.ts     → evolución, benchmarks y TIR
-    journal.ts     → diario de decisiones
-    importer.ts    → lectura de CSV
-    simulator.ts   → simulador de inversiones pasadas
-    alerts.ts      → alertas de precio
-    cedear.ts      → CCL implícito y brecha de los CEDEARs
+    sync.ts            → mantiene precios, dólar e índices al día
+    clean.ts           → corrige datos de Yahoo (cambios de ratio no informados, dividendos imposibles)
+    portfolio.ts       → cálculos contables (PPP, resultados, dividendos, splits, conversión)
+    history.ts         → evolución, benchmarks y TIR
+    journal.ts         → diario de decisiones
+    review.ts          → ¿y si no hubieras tocado nada? y comisiones
+    exposure.ts        → sector y país de cada activo
+    diversification.ts → Para revisar y objetivo de reparto
+    budget.ts          → sueldo y gastos contra la inflación
+    importer.ts        → lectura de los archivos del broker (CSV, Excel, IOL)
+    simulator.ts       → simulador de inversiones pasadas
+    alerts.ts          → alertas de precio
+    cedear.ts          → CCL implícito y brecha de los CEDEARs
+    images.ts          → fotos de las operaciones
   cedears.ts     → tabla de ratios de los CEDEARs
   auth.ts        → registro, login y sesiones
   db.ts          → base de datos y migraciones
@@ -169,8 +177,8 @@ client/src/
 - **Resultado no realizado**: valor de mercado de la tenencia − su costo.
 - **Dividendos**: ingreso aparte, neto de retenciones (30% sugerido para CEDEARs, 7% para acciones locales). Los sugeridos de un CEDEAR se calculan como los paga el broker: dividendo en dólares de la acción en EE.UU. ÷ ratio × dólar MEP de ese día.
 - **En dólares**, cada operación y cada precio se convierten con el dólar **del día en que ocurrieron**.
-- **Benchmarks**: cada compra "compra" unidades de la alternativa y cada venta o dividendo "vende" unidades.
-- **TIR**: tasa anual que iguala a cero el valor presente de todos los flujos (incluido el valor actual).
+- **Benchmarks**: cada compra "compra" unidades de la alternativa y cada venta o dividendo "vende" unidades. Si sacaste más de lo que habría valido la alternativa, queda negativa (no te alcanzaba para esas ventas): la diferencia se informa en plata, sin porcentaje. Merval y S&P 500 son solo precio, sin dividendos (tu cartera sí los cuenta); y a cada alternativa le llega toda la plata, comisiones incluidas, sin pagar comisiones.
+- **TIR**: tasa anual que iguala a cero el valor presente de todos los flujos (incluido el valor actual). Con menos de un año de operaciones no se calcula: anualizar un período corto exagera (20% en dos meses se leería como casi +200% por año), y las normas internacionales de rendimiento (GIPS) piden no hacerlo.
 - **Plazo fijo**: tasa de depósitos a 30 días, renovado cada mes (capitalización mensual).
 - **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%. Mide el momento de cada decisión, no si se ganó plata: eso se ve aparte en "Ventas con ganancia" (resultado de cada venta contra el precio promedio).
 - **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias.

@@ -24,7 +24,9 @@ describe('TIR (rendimiento por año)', () => {
     assert.ok(near(r, 0.1, 1e-3));
   });
 
-  test('con menos de un mes no se calcula (no es representativo)', () => {
+  test('con menos de un año no se anualiza: 20% en dos meses no es "+199% por año"', () => {
+    // 1,2 elevado a 6 (seis bimestres) − 1 = 198,6%: un número que no dice nada
+    assert.equal(xirr([{ date: '2024-01-01', amount: -1000 }, { date: '2024-03-01', amount: 1200 }]), null);
     assert.equal(xirr([{ date: '2024-01-01', amount: -1000 }, { date: '2024-01-15', amount: 1100 }]), null);
   });
 });
@@ -167,11 +169,13 @@ describe('Las pantallas cuentan lo mismo', () => {
     assert.ok(near(p.totalGain, h.value - h.netInvested));
   });
 
-  test('en dólares, "haber comprado dólares" da exactamente la plata puesta y 0% por año', () => {
+  test('en dólares, "haber comprado dólares" da exactamente la plata puesta', () => {
     const h = buildHistory(1, 'USD', 'bolsa');
     const dolar = h.benchmarks.find((b) => b.key === 'dolar')!;
     assert.ok(near(dolar.value, h.portfolio!.netInvested));
-    assert.ok(near(dolar.irr, 0, 1e-6));
+    // Son tres meses de operaciones: todavía no se informa rendimiento por año
+    assert.equal(dolar.irr, null);
+    assert.equal(h.portfolio!.irr, null);
   });
 
   test('con dólar CCL la comparación dice "Dólar CCL"', () => {

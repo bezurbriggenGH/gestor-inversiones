@@ -6,7 +6,7 @@
 import { all, get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { HttpError, arDate } from '../util.ts';
-import { DateSeries, dividendEvents, loadFx, type Currency } from './portfolio.ts';
+import { DEFAULT_WITHHOLDING, DateSeries, dividendEvents, loadFx, type Currency } from './portfolio.ts';
 import { loadIndex, plazoFijoIndex } from './history.ts';
 
 export const ALTERNATIVES = {
@@ -40,7 +40,10 @@ export function simulate(ticker: string, amount: number, date: string, currency:
   const uva = loadIndex('uva');
   const pf = plazoFijoIndex(start.date, arDate());
 
-  // Dividendos cobrados en el camino (brutos, sin reinvertir)
+  // Dividendos cobrados en el camino, sin reinvertir y netos de la retención habitual (30% en CEDEARs,
+  // 7% en acciones locales), igual que los que sugiere la cartera: con el bruto, el activo parecía
+  // rendir más en el simulador que en tu cartera real.
+  const keep = 1 - DEFAULT_WITHHOLDING[asset.type === 'ACCION' ? 'ACCION' : 'CEDEAR'];
   const dividends = dividendEvents(ticker, asset.type).filter((d) => d.date > start.date);
   let divIdx = 0;
   let cash = 0;
@@ -49,7 +52,7 @@ export function simulate(ticker: string, amount: number, date: string, currency:
   const grow = (s: DateSeries, d: string) => (s.empty ? null : (amount * s.at(d)) / s.at(start.date));
 
   const points = days.map((r) => {
-    while (divIdx < dividends.length && dividends[divIdx].date <= r.date) cash += units * dividends[divIdx++].amount;
+    while (divIdx < dividends.length && dividends[divIdx].date <= r.date) cash += units * dividends[divIdx++].amount * keep;
     const values: Record<Alt, number | null> = {
       activo: units * r.close + cash,
       dolar: grow(fx, r.date),

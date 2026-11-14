@@ -6,6 +6,16 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * ¿Se le cree al encabezado X-Forwarded-For para saber la IP de quien pide?
+ * Solo si la app corre detrás de un proxy propio (TRUST_PROXY=1). Sin proxy, ese encabezado lo
+ * escribe cualquiera: mandando uno distinto en cada intento se esquivaría el límite de intentos
+ * de login, que cuenta por IP. La app corre en tu compu, sin proxy, así que por defecto no se le cree.
+ */
+export function trustProxy(setting: string | undefined = process.env.TRUST_PROXY): number | false {
+  return setting === '1' ? 1 : false;
+}
+
 const arFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Argentina/Buenos_Aires',
   year: 'numeric',
