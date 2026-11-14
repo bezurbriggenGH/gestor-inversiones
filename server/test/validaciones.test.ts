@@ -25,7 +25,7 @@ before(async () => {
   run("INSERT INTO prices (ticker, date, close) VALUES ('AAA', '2025-01-02', 100)");
   run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'AAA')");
   // Todo figura como recién actualizado: los tests nunca salen a internet (Yahoo, dólar, índices)
-  for (const key of ['fx', 'fx-history', 'indices', 'splits:AAA']) {
+  for (const key of ['fx', 'fx-history', 'indices', 'index-full:ipc', 'splits:AAA']) {
     run('INSERT INTO sync_state (key, value) VALUES (?, ?)', key, Date.now());
   }
 
@@ -252,6 +252,58 @@ describe('Importar un ticker que la app no conoce', () => {
     yahoo(() => Promise.resolve(new globalThis.Response('{}', { status: 404 })));
     const [fila] = (await call('POST', '/import', { csv, commit: false })).body.rows as { status: string; errors: string[] }[];
     assert.match(fila.errors.join(), /no encontramos ZZZ en BYMA/);
+  });
+});
+
+describe('Sueldo y gastos', () => {
+  let sueldo = 0;
+
+  test('un concepto se crea; sin nombre, con tipo raro o repetido, no', async () => {
+    const r = await call('POST', '/budget/items', { name: 'Sueldo', kind: 'INGRESO' });
+    assert.equal(r.status, 201);
+    sueldo = r.body.id;
+    assert.match((await call('POST', '/budget/items', { name: '  ', kind: 'GASTO' })).error ?? '', /Escribí un nombre/);
+    assert.match((await call('POST', '/budget/items', { name: 'Luz', kind: 'OTRO' })).error ?? '', /ingreso o un gasto/);
+    assert.match((await call('POST', '/budget/items', { name: 'sueldo', kind: 'INGRESO' })).error ?? '', /Ya tenés/);
+  });
+
+  for (const [caso, datos, mensaje] of [
+    ['monto cero', { month: '2026-01', amount: 0 }, /mayor a cero/],
+    ['monto negativo', { month: '2026-01', amount: -5 }, /mayor a cero/],
+    ['monto como texto', { month: '2026-01', amount: '1000' }, /mayor a cero/],
+    ['mes inválido', { month: '2026-13', amount: 1000 }, /mes válido/],
+    ['mes futuro', { month: '2999-01', amount: 1000 }, /todavía no pasaron/],
+  ] as const) {
+    test(`no se acepta un ${caso}`, async () => {
+      const r = await call('PUT', '/budget/amounts', { itemId: sueldo, ...datos });
+      assert.equal(r.status, 400);
+      assert.match(r.error ?? '', mensaje);
+    });
+  }
+
+  test('un concepto de otro usuario (o que no existe) no se puede tocar', async () => {
+    const r = await call('PUT', '/budget/amounts', { itemId: 9999, month: '2026-01', amount: 1000 });
+    assert.equal(r.status, 404);
+  });
+
+  test('cargar, repetir el mes anterior y borrar', async () => {
+    assert.equal((await call('PUT', '/budget/amounts', { itemId: sueldo, month: '2026-01', amount: 1_000_000 })).status, 204);
+    assert.equal((await call('POST', '/budget/copy', { month: '2026-02' })).body.copied, 1);
+    // Repetir de nuevo no pisa lo que ya está
+    assert.equal((await call('POST', '/budget/copy', { month: '2026-02' })).body.copied, 0);
+    let b = (await call('GET', '/budget')).body;
+    assert.deepEqual(
+      b.amounts.map((a: { month: string; amount: number }) => [a.month, a.amount]),
+      [
+        ['2026-01', 1_000_000],
+        ['2026-02', 1_000_000],
+      ],
+    );
+    assert.equal((await call('PUT', '/budget/amounts', { itemId: sueldo, month: '2026-02', amount: null })).status, 204);
+    assert.equal((await call('DELETE', `/budget/items/${sueldo}`)).status, 204);
+    b = (await call('GET', '/budget')).body;
+    assert.equal(b.items.length, 0);
+    assert.equal(b.amounts.length, 0);
   });
 });
 

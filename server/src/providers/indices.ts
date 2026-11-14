@@ -15,6 +15,17 @@ export async function fetchUva(): Promise<IndexPoint[]> {
   return data.filter((d) => d.valor > 0).map((d) => ({ date: d.fecha, value: d.valor }));
 }
 
+/**
+ * Inflación mensual oficial (IPC del INDEC), en porcentaje: 2.2 = 2,2% en el mes. La fecha es el último día
+ * del mes. Se publica a mediados del mes siguiente. Fuente: ArgentinaDatos.
+ */
+export async function fetchIpc(): Promise<IndexPoint[]> {
+  const res = await fetchWithTimeout('https://api.argentinadatos.com/v1/finanzas/indices/inflacion', 'ArgentinaDatos');
+  if (!res.ok) throw new Error(`ArgentinaDatos (inflación) respondió ${res.status}`);
+  const data = (await res.json()) as { fecha: string; valor: number }[];
+  return data.filter((d) => typeof d.valor === 'number' && /^\d{4}-\d{2}-\d{2}$/.test(d.fecha)).map((d) => ({ date: d.fecha, value: d.valor }));
+}
+
 /** Tasa nominal anual de depósitos a 30 días (como fracción: 0.25 = 25%). */
 export async function fetchDepositRate(): Promise<IndexPoint[]> {
   const res = await fetchWithTimeout('https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias', 'ArgentinaDatos');

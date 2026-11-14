@@ -154,6 +154,24 @@ const migrations: string[] = [
   `
   ALTER TABLE users ADD COLUMN target_cedear REAL CHECK (target_cedear BETWEEN 0 AND 1);
   `,
+  // v7: sueldo y gastos fijos de cada mes (opcional, aparte de las inversiones). Un concepto
+  // (sueldo, alquiler, seguro del auto…) tiene un monto por mes, en pesos. month = 'AAAA-MM'.
+  `
+  CREATE TABLE budget_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('INGRESO', 'GASTO')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, name COLLATE NOCASE)
+  );
+  CREATE TABLE budget_amounts (
+    item_id INTEGER NOT NULL REFERENCES budget_items(id) ON DELETE CASCADE,
+    month   TEXT NOT NULL,
+    amount  REAL NOT NULL CHECK (amount > 0),
+    PRIMARY KEY (item_id, month)
+  );
+  `,
 ];
 
 function migrate() {

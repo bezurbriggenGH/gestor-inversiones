@@ -5,7 +5,7 @@ import { db, all, get, run, tx } from '../db.ts';
 import { fetchChart, fetchProfile, type Bar, type Dividend, type Split } from '../providers/yahoo.ts';
 import { inCatalog, translateSector } from './exposure.ts';
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
-import { fetchDepositRate, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
+import { fetchDepositRate, fetchIpc, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
 import { cleanHistory } from './clean.ts';
 import { addDays, lastMarketTime } from '../util.ts';
@@ -319,4 +319,16 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
   markSynced(`splits:${ticker}`);
   if (type === 'CEDEAR') await syncUnderlying(ticker);
   await syncSector(ticker, symbol);
+}
+
+/**
+ * Inflación mensual oficial (para Sueldo y gastos). Va aparte de los índices de la Comparativa:
+ * se baja una vez por día y solo cuando se abre esa pantalla.
+ */
+export function syncIpc(force = false): Promise<void> {
+  return once('ipc', async () => {
+    if (!force && !stale('index-full:ipc', DAILY_TTL_MS)) return;
+    saveIndex('ipc', await fetchIpc());
+    markSynced('index-full:ipc');
+  });
 }

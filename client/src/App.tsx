@@ -14,6 +14,7 @@ import { AlertsPage } from './pages/AlertsPage';
 import { ImportPage } from './pages/ImportPage';
 import { SimulatorPage } from './pages/SimulatorPage';
 import { ReportPage } from './pages/ReportPage';
+import { BudgetPage } from './pages/BudgetPage';
 
 export function App() {
   const { user, loading } = useAuth();
@@ -44,6 +45,7 @@ export function App() {
             <Route path="/importar" element={<ImportPage />} />
             <Route path="/simulador" element={<SimulatorPage />} />
             <Route path="/informe" element={<ReportPage />} />
+            <Route path="/sueldo-y-gastos" element={<BudgetPage />} />
             <Route path="*" element={<p className="text-muted">Página no encontrada.</p>} />
           </Routes>
         </div>

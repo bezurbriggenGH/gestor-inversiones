@@ -53,6 +53,7 @@ export function Sidebar() {
     { to: '/simulador', label: 'Simulador' },
     { to: '/diario', label: 'Diario de decisiones' },
     { to: '/alertas', label: 'Alertas', badge: unseen },
+    { to: '/sueldo-y-gastos', label: 'Sueldo y gastos' },
     { to: '/importar', label: 'Importar operaciones' },
     { to: '/informe', label: 'Informe (PDF)' },
   ];

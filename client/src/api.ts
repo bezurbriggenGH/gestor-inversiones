@@ -380,6 +380,34 @@ export interface Simulation {
   points: ({ date: string } & Record<SimAlternative, number | null>)[];
 }
 
+// ---------- Sueldo y gastos ----------
+
+export type BudgetKind = 'INGRESO' | 'GASTO';
+export interface BudgetItem {
+  id: number;
+  name: string;
+  kind: BudgetKind;
+}
+export interface BudgetComparison {
+  from: string;
+  to: string;
+  change: number;
+  inflation: number;
+  real: number;
+}
+type MonthPoint = { month: string; value: number };
+export interface Budget {
+  items: BudgetItem[];
+  amounts: { item_id: number; month: string; amount: number }[];
+  analysis: {
+    leftover: { month: string; amount: number }[];
+    income: { index: MonthPoint[]; comparison: BudgetComparison | null };
+    expenses: { id: number; name: string; index: MonthPoint[]; comparison: BudgetComparison | null }[];
+    inflation: MonthPoint[];
+    lastInflationMonth: string | null;
+  };
+}
+
 export class AuthError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -437,4 +465,12 @@ export const api = {
   markAlertsSeen: () => post<void>('/alerts/seen'),
 
   importCsv: (csv: string, commit: boolean) => post<ImportResult>('/import', { csv, commit }),
+
+  budget: () => request<Budget>('/budget'),
+  addBudgetItem: (name: string, kind: BudgetKind) => post<{ id: number }>('/budget/items', { name, kind }),
+  deleteBudgetItem: (id: number) => del(`/budget/items/${id}`),
+  /** amount null borra el monto de ese mes */
+  setBudgetAmount: (itemId: number, month: string, amount: number | null) =>
+    request<void>('/budget/amounts', { method: 'PUT', body: JSON.stringify({ itemId, month, amount }) }),
+  copyBudgetMonth: (month: string) => post<{ copied: number }>('/budget/copy', { month }),
 };

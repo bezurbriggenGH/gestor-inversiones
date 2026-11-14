@@ -2,7 +2,7 @@ import express, { Router } from 'express';
 import { MAX_IMAGE_BYTES, addImage, deleteImage, deleteImagesOf, firstImageIds, imageCounts, imageFile, listImages } from './services/images.ts';
 import { get, run, tx, all } from './db.ts';
 import { YahooNotFound } from './providers/yahoo.ts';
-import { ensureAsset, syncAll, syncAsset, syncFx, syncIndices } from './services/sync.ts';
+import { ensureAsset, syncAll, syncAsset, syncFx, syncIndices, syncIpc } from './services/sync.ts';
 import {
   assertNoShortSelling,
   buildAssetDetail,
@@ -22,6 +22,7 @@ import { buildHistory } from './services/history.ts';
 import { buildJournal, decisionOf } from './services/journal.ts';
 import { buildCosts, buildHoldComparison } from './services/review.ts';
 import { buildReview } from './services/diversification.ts';
+import { buildBudget, isMonth, prevMonth } from './services/budget.ts';
 import { CSV_TEMPLATE, parseCsv } from './services/importer.ts';
 import { checkAlerts, listAlerts } from './services/alerts.ts';
 import { searchCatalog } from './catalog.ts';
@@ -356,6 +357,79 @@ router.delete('/operations/:id', (req, res) => {
     run('DELETE FROM operations WHERE id = ?', id);
   });
   res.status(204).end();
+});
+
+// ---------- Sueldo y gastos (opcional) ----------
+
+router.get('/budget', async (_req, res) => {
+  await syncIpc().catch(() => {}); // sin internet se usa la inflación guardada
+  res.json(buildBudget(userId(res)));
+});
+
+/** El concepto tiene que ser del usuario. */
+function requireBudgetItem(user: number, id: unknown): number {
+  const item = get<{ id: number }>('SELECT id FROM budget_items WHERE id = ? AND user_id = ?', Number(id), user);
+  if (!item) throw new HttpError(404, 'No existe ese concepto');
+  return item.id;
+}
+
+router.post('/budget/items', (req, res) => {
+  const name = String(req.body?.name ?? '').trim();
+  const kind = req.body?.kind;
+  if (!name) throw new HttpError(400, 'Escribí un nombre (por ejemplo, "Seguro del auto")');
+  if (name.length > 40) throw new HttpError(400, 'El nombre puede tener hasta 40 letras');
+  if (kind !== 'INGRESO' && kind !== 'GASTO') throw new HttpError(400, 'Elegí si es un ingreso o un gasto');
+  if (get('SELECT 1 FROM budget_items WHERE user_id = ? AND name = ? COLLATE NOCASE', userId(res), name))
+    throw new HttpError(400, `Ya tenés un concepto llamado "${name}"`);
+  const r = run('INSERT INTO budget_items (user_id, name, kind) VALUES (?, ?, ?)', userId(res), name, kind);
+  res.status(201).json({ id: Number(r.lastInsertRowid) });
+});
+
+router.delete('/budget/items/:id', (req, res) => {
+  const id = requireBudgetItem(userId(res), req.params.id);
+  tx(() => {
+    run('DELETE FROM budget_amounts WHERE item_id = ?', id);
+    run('DELETE FROM budget_items WHERE id = ?', id);
+  });
+  res.status(204).end();
+});
+
+/** Cargar, cambiar o borrar (amount: null) el monto de un concepto en un mes. */
+router.put('/budget/amounts', (req, res) => {
+  const id = requireBudgetItem(userId(res), req.body?.itemId);
+  const { month, amount } = req.body ?? {};
+  if (!isMonth(month)) throw new HttpError(400, 'Elegí un mes válido');
+  if (month > arDate().slice(0, 7)) throw new HttpError(400, 'No se pueden cargar meses que todavía no pasaron');
+  if (amount === null) {
+    run('DELETE FROM budget_amounts WHERE item_id = ? AND month = ?', id, month);
+    return res.status(204).end();
+  }
+  if (typeof amount !== 'number' || !(amount > 0)) throw new HttpError(400, 'El monto tiene que ser mayor a cero');
+  if (amount > 1e12) throw new HttpError(400, 'El monto es demasiado grande');
+  run(
+    'INSERT INTO budget_amounts (item_id, month, amount) VALUES (?, ?, ?) ON CONFLICT (item_id, month) DO UPDATE SET amount = excluded.amount',
+    id,
+    month,
+    amount,
+  );
+  res.status(204).end();
+});
+
+/** Repetir el mes anterior: completa los conceptos vacíos de `month` con lo que valían el mes anterior. */
+router.post('/budget/copy', (req, res) => {
+  const month = req.body?.month;
+  if (!isMonth(month)) throw new HttpError(400, 'Elegí un mes válido');
+  if (month > arDate().slice(0, 7)) throw new HttpError(400, 'No se pueden cargar meses que todavía no pasaron');
+  const r = run(
+    `INSERT INTO budget_amounts (item_id, month, amount)
+     SELECT a.item_id, ?, a.amount FROM budget_amounts a JOIN budget_items i ON i.id = a.item_id
+     WHERE i.user_id = ? AND a.month = ?
+     ON CONFLICT (item_id, month) DO NOTHING`,
+    month,
+    userId(res),
+    prevMonth(month),
+  );
+  res.json({ copied: Number(r.changes) });
 });
 
 // ---------- Alertas ----------

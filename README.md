@@ -31,6 +31,9 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
   cuánta plata dejaste de ganar o te ahorraste de perder al precio de hoy.
 - **¿Y si no hubieras tocado nada?**: compara lo que tenías un día, a precios de hoy, contra lo que hiciste de verdad. Dice en plata si operar te sumó o te restó.
 - **Comisiones**: cuánto pagaste por comprar y vender, por año, y qué parte de tu ganancia se llevaron.
+- **Sueldo y gastos** (opcional): cada mes cargás a mano tu sueldo y tus gastos fijos (alquiler, seguro, servicios…). Un gráfico
+  muestra quién subió más (todo arranca en 100) contra la inflación oficial, y una línea dice si tu sueldo le ganó o perdió contra la
+  inflación y qué gasto subió más. "Repetir anterior" completa un mes con los montos del mes previo.
 - **Informe**: todo lo importante en una hoja para guardar como PDF o imprimir.
 - **El gráfico como diario**: cada compra y venta marcada sobre el precio y pintada según cómo salió (verde acierto, rojo error, gris sin veredicto). Al pasar el cursor se ve por qué la hiciste, la foto que guardaste y cuánto ganaste o dejaste de ganar.
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
@@ -131,6 +134,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | Dólar MEP y CCL (historial) | ArgentinaDatos |
 | Dólar del momento | DolarApi |
 | Inflación (índice UVA) y tasa de plazo fijo | ArgentinaDatos |
+| Inflación mensual oficial (IPC del INDEC), para Sueldo y gastos | ArgentinaDatos |
 
 Todas son públicas y no requieren clave. La app guarda todo en su base de datos y cada
 actualización pide **solo los días que faltan**, así que aunque no se abra por semanas no se pierde nada.
@@ -173,3 +177,4 @@ client/src/
 - **Splits**: una operación anterior a un split se multiplica en cantidad y se divide en precio por el factor del split; el monto total no cambia. Si el split deja una fracción de acción, se toma como cobrada en efectivo al precio de ese día (el broker solo acredita acciones enteras).
 - **Variación del día**: valor de hoy − valor de ayer − plata puesta hoy; lo comprado hoy se mide contra lo que pagaste.
 - **CCL implícito**: precio del CEDEAR × ratio ÷ precio en EE.UU. Si el ratio observado se aleja más de 10% del de la tabla (por ejemplo, tras un split), no se muestra.
+- **Sueldo y gastos**: cuánto subió un concepto = último monto ÷ primero − 1. La inflación del mismo período se acumula mes a mes con el IPC (2% y 3% → 1,02 × 1,03 − 1 = 5,06%), solo hasta el último mes publicado. Poder de compra = (1 + suba) ÷ (1 + inflación) − 1. Los ingresos se suman entre sí. "Te queda" = ingresos − gastos del mes (solo meses con los dos cargados).
