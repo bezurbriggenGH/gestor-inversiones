@@ -6,6 +6,7 @@ export interface CatalogItem {
   name: string;
   type: 'ACCION' | 'CEDEAR';
   sector?: string;
+  country?: string;
 }
 
 const ACCIONES: [string, string, string][] = [
@@ -162,9 +163,58 @@ const CEDEARS: [string, string, string][] = [
   ['XOM', 'ExxonMobil', 'Energía'],
 ];
 
+// Más CEDEARs (se agregan acá cuando aparece uno que la app no conocía)
+const MAS_CEDEARS: [string, string, string][] = [
+  ['AAP', 'Advance Auto Parts', 'Consumo'],
+  ['ACN', 'Accenture', 'Tecnología'],
+  ['ADGO', 'Adecoagro', 'Agro'],
+  ['AI', 'C3.ai', 'Tecnología'],
+  ['ALAB', 'Astera Labs', 'Tecnología'],
+  ['ANF', 'Abercrombie & Fitch', 'Consumo'],
+  ['ARM', 'Arm Holdings', 'Tecnología'],
+  ['ASTS', 'AST SpaceMobile', 'Telecomunicaciones'],
+  ['AZN', 'AstraZeneca', 'Salud'],
+  ['B', 'Barrick Mining', 'Minería'],
+  ['CRWV', 'CoreWeave', 'Tecnología'],
+  ['DOCU', 'DocuSign', 'Tecnología'],
+  ['FSLR', 'First Solar', 'Energía'],
+  ['HIMS', 'Hims & Hers Health', 'Salud'],
+  ['HL', 'Hecla Mining', 'Minería'],
+  ['HUT', 'Hut 8', 'Finanzas'],
+  ['MO', 'Altria', 'Consumo'],
+  ['PAAS', 'Pan American Silver', 'Minería'],
+  ['PATH', 'UiPath', 'Tecnología'],
+  ['PLTR', 'Palantir', 'Tecnología'],
+  ['RBLX', 'Roblox', 'Tecnología'],
+  ['SCCO', 'Southern Copper', 'Minería'],
+  ['SDA', 'SunCar Technology', 'Consumo'],
+  ['SNDK', 'Sandisk', 'Tecnología'],
+  ['SPCX', 'SpaceX', 'Industria'],
+  ['XP', 'XP Inc.', 'Finanzas'],
+];
+
+// País de la empresa detrás de cada CEDEAR. Casi todos son de Estados Unidos: acá van las excepciones.
+// (País donde está el negocio, no donde cotiza: MercadoLibre cotiza en Nueva York pero es argentina.)
+const OTHER_COUNTRIES: Record<string, string> = {
+  ADGO: 'Argentina', BIOX: 'Argentina', GLOB: 'Argentina', MELI: 'Argentina', SATL: 'Argentina', VIST: 'Argentina',
+  BBD: 'Brasil', EWZ: 'Brasil', ITUB: 'Brasil', NU: 'Brasil', PAGS: 'Brasil', PBR: 'Brasil', VALE: 'Brasil', XP: 'Brasil',
+  BABA: 'China', BIDU: 'China', SDA: 'China',
+  ARM: 'Reino Unido', AZN: 'Reino Unido', RIO: 'Reino Unido',
+  B: 'Canadá', PAAS: 'Canadá', SHOP: 'Canadá',
+  ACN: 'Irlanda', HMY: 'Sudáfrica', SPOT: 'Suecia', TSM: 'Taiwán',
+  // Fondos que no son de un solo país: mercados emergentes, oro y plata
+  EEM: 'Varios países', GLD: 'Varios países', SLV: 'Varios países',
+};
+
 export const CATALOG: CatalogItem[] = [
-  ...ACCIONES.map(([ticker, name, sector]) => ({ ticker, name, sector, type: 'ACCION' as const })),
-  ...CEDEARS.map(([ticker, name, sector]) => ({ ticker, name, sector, type: 'CEDEAR' as const })),
+  ...ACCIONES.map(([ticker, name, sector]) => ({ ticker, name, sector, type: 'ACCION' as const, country: 'Argentina' })),
+  ...[...CEDEARS, ...MAS_CEDEARS].map(([ticker, name, sector]) => ({
+    ticker,
+    name,
+    sector,
+    type: 'CEDEAR' as const,
+    country: OTHER_COUNTRIES[ticker] ?? 'Estados Unidos',
+  })),
 ];
 
 const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');

@@ -14,6 +14,7 @@ import { FX_KINDS } from '../providers/dolar.ts';
 import { HttpError } from '../util.ts';
 import { buildCedearInfo, cedearGap } from './cedear.ts';
 import { CEDEAR_RATIOS, usSymbolOf } from '../cedears.ts';
+import { classifyAsset, groupBy } from './exposure.ts';
 
 export type Currency = 'ARS' | 'USD';
 export type OpType = 'COMPRA' | 'VENTA' | 'DIVIDENDO';
@@ -24,6 +25,8 @@ export interface AssetRow {
   name: string;
   type: 'ACCION' | 'CEDEAR';
   last_sync: number | null;
+  /** Solo para activos que no están en el catálogo: el sector que informó Yahoo. */
+  sector: string | null;
 }
 
 export interface OperationRow {
@@ -301,7 +304,7 @@ export function computePosition(ops: OperationRow[], last: PriceRow | undefined,
 
 export function userAssets(userId: number): AssetRow[] {
   return all<AssetRow>(
-    `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync FROM user_assets ua
+    `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync, a.sector FROM user_assets ua
      JOIN assets a ON a.ticker = ua.ticker WHERE ua.user_id = ? ORDER BY ua.added_at, a.ticker`,
     userId,
   );
@@ -309,7 +312,7 @@ export function userAssets(userId: number): AssetRow[] {
 
 export function requireUserAsset(userId: number, ticker: string): AssetRow {
   const asset = get<AssetRow>(
-    `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync FROM user_assets ua
+    `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync, a.sector FROM user_assets ua
      JOIN assets a ON a.ticker = ua.ticker WHERE ua.user_id = ? AND ua.ticker = ?`,
     userId,
     ticker,
@@ -511,6 +514,7 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
     type: a.type,
     ...positionFor(userId, a.ticker, conv).position,
     cedearGap: a.type === 'CEDEAR' ? cedearGap(a.ticker) : null,
+    ...classifyAsset(a.ticker, a.type, a.sector),
   }));
 
   // La variación del día es la de la última rueda. Un activo que ese día no tuvo precio (no operó, o
@@ -556,6 +560,8 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
       dayChangePct: yesterdayValue > 0 ? dayChange / yesterdayValue : 0,
     },
     positions: positions.map((p) => ({ ...p, weight: marketValue > 0 ? p.marketValue / marketValue : 0 })),
+    // En qué sectores y países está puesta la plata
+    exposure: { sectors: groupBy(positions, 'sector'), countries: groupBy(positions, 'country') },
     lastSync: assets.reduce<number | null>((m, a) => (a.last_sync && (!m || a.last_sync > m) ? a.last_sync : m), null),
   };
 }

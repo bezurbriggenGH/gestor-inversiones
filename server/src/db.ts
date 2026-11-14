@@ -145,6 +145,10 @@ const migrations: string[] = [
   );
   CREATE INDEX operation_images_op ON operation_images (operation_id);
   `,
+  // v5: sector de los activos que no están en el catálogo de la app (se le pregunta a Yahoo una vez)
+  `
+  ALTER TABLE assets ADD COLUMN sector TEXT;
+  `,
 ];
 
 function migrate() {

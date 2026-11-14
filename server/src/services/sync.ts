@@ -2,7 +2,8 @@
 // desde la última fecha guardada hasta hoy, así que si nadie abre la app por una
 // semana, la próxima vez se completan los días que faltan en una sola consulta.
 import { db, all, get, run, tx } from '../db.ts';
-import { fetchChart, type Bar, type Dividend, type Split } from '../providers/yahoo.ts';
+import { fetchChart, fetchProfile, type Bar, type Dividend, type Split } from '../providers/yahoo.ts';
+import { inCatalog, translateSector } from './exposure.ts';
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
 import { fetchDepositRate, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
@@ -171,6 +172,29 @@ async function downloadAsset(ticker: string, symbol: string): Promise<void> {
   run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
   checkAlerts(ticker);
   await syncUnderlying(ticker);
+  await syncSector(ticker, symbol);
+}
+
+/**
+ * Sector de un activo que no está en el catálogo de la app: se le pregunta a Yahoo una sola vez.
+ * Si Yahoo no lo sabe, el activo queda "Sin clasificar" (no se vuelve a preguntar en cada vuelta).
+ */
+async function syncSector(ticker: string, symbol: string): Promise<void> {
+  const key = `sector:${ticker}`;
+  if (inCatalog(ticker) || get('SELECT 1 FROM sync_state WHERE key = ?', key)) return;
+  try {
+    let profile = await fetchProfile(symbol);
+    // A veces Yahoo no tiene ficha del CEDEAR (KEEL.BA) pero sí de la acción original (KEEL).
+    // Solo en CEDEARs: el ticker de una acción local puede coincidir con el de otra empresa de afuera.
+    const isCedear = get<{ type: string }>('SELECT type FROM assets WHERE ticker = ?', ticker)?.type === 'CEDEAR';
+    if (isCedear && !profile?.sector && profile?.quoteType !== 'ETF') profile = (await fetchProfile(usSymbolOf(ticker) ?? ticker)) ?? profile;
+    const sector = translateSector(profile?.sector, profile?.quoteType);
+    if (sector) run('UPDATE assets SET sector = ? WHERE ticker = ?', sector, ticker);
+    markSynced(key);
+  } catch (e) {
+    // Es un dato extra: si falla, se prueba de nuevo en la próxima actualización
+    console.warn(`[sync] sector de ${ticker}:`, (e as Error).message);
+  }
 }
 
 /**
@@ -294,4 +318,5 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
   saveBars(ticker, chart.bars, chart.dividends, chart.splits);
   markSynced(`splits:${ticker}`);
   if (type === 'CEDEAR') await syncUnderlying(ticker);
+  await syncSector(ticker, symbol);
 }

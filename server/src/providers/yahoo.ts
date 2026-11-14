@@ -58,6 +58,26 @@ async function takeTurn<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Sector de una empresa según el buscador de Yahoo ("Technology", "Financial Services"…), y qué
+ * tipo de instrumento es ("EQUITY", "ETF"). Devuelve null si Yahoo no conoce ese símbolo.
+ */
+export function fetchProfile(symbol: string): Promise<{ sector?: string; quoteType?: string } | null> {
+  return takeTurn(async () => {
+    if (Date.now() < pausedUntil) throw new YahooPaused();
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?quotesCount=5&newsCount=0&q=${encodeURIComponent(symbol)}`;
+    const res = await fetchWithTimeout(url, 'Yahoo Finance', { headers: { 'User-Agent': USER_AGENT } });
+    if (res.status === 429) {
+      pausedUntil = Date.now() + PAUSE_AFTER_429_MS;
+      throw new YahooPaused();
+    }
+    if (!res.ok) throw new Error(`Yahoo Finance respondió ${res.status} para ${symbol}`);
+    const json = (await res.json()) as { quotes?: { symbol?: string; sector?: string; quoteType?: string }[] };
+    const match = (json.quotes ?? []).find((q) => q.symbol?.toUpperCase() === symbol.toUpperCase());
+    return match ? { sector: match.sector, quoteType: match.quoteType } : null;
+  });
+}
+
 export class YahooPaused extends Error {
   constructor() {
     super('Yahoo Finance pidió esperar por demasiados pedidos. Se vuelve a intentar en unos minutos.');

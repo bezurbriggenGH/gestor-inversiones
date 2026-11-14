@@ -13,8 +13,48 @@ import {
   unregisteredDividends,
 } from '../src/services/portfolio.ts';
 
+import { UNCLASSIFIED, classifyAsset, groupBy, translateSector } from '../src/services/exposure.ts';
+
 const position = (ops: ReturnType<typeof op>[], last?: ReturnType<typeof close>, prev?: ReturnType<typeof close>) =>
   computePosition(ops, last, prev, pesos).position;
+
+describe('Exposición por sector y por país', () => {
+  test('lo que la app conoce sale del catálogo', () => {
+    assert.deepEqual(classifyAsset('GGAL', 'ACCION', null), { sector: 'Bancos', country: 'Argentina' });
+    assert.deepEqual(classifyAsset('AAPL', 'CEDEAR', null), { sector: 'Tecnología', country: 'Estados Unidos' });
+    assert.deepEqual(classifyAsset('PBR', 'CEDEAR', null), { sector: 'Energía', country: 'Brasil' });
+  });
+
+  test('un CEDEAR que la app no conoce: el sector que informó Yahoo, y el país sin clasificar', () => {
+    assert.deepEqual(classifyAsset('NUEVO', 'CEDEAR', 'Finanzas'), { sector: 'Finanzas', country: null });
+    assert.deepEqual(classifyAsset('NUEVO', 'CEDEAR', null), { sector: null, country: null });
+    // Una acción local que no está en el catálogo es, igual, de Argentina
+    assert.equal(classifyAsset('NUEVA', 'ACCION', null).country, 'Argentina');
+  });
+
+  test('los sectores de Yahoo se pasan a castellano; un fondo va como "ETF"', () => {
+    assert.equal(translateSector('Financial Services', 'EQUITY'), 'Finanzas');
+    assert.equal(translateSector('Consumer Cyclical', 'EQUITY'), 'Consumo');
+    assert.equal(translateSector(undefined, 'ETF'), 'ETF');
+    assert.equal(translateSector(undefined, 'EQUITY'), null);
+  });
+
+  test('tres tecnológicas por $600 y un banco por $300: 60% tecnología, 30% bancos, 10% sin clasificar', () => {
+    const positions = [
+      { ticker: 'A', marketValue: 100, sector: 'Tecnología', country: 'Estados Unidos' },
+      { ticker: 'B', marketValue: 300, sector: 'Tecnología', country: 'Estados Unidos' },
+      { ticker: 'C', marketValue: 200, sector: 'Tecnología', country: 'China' },
+      { ticker: 'D', marketValue: 300, sector: 'Bancos', country: 'Argentina' },
+      { ticker: 'E', marketValue: 100, sector: null, country: null },
+      { ticker: 'F', marketValue: 0, sector: 'Energía', country: 'Argentina' }, // ya vendido: no cuenta
+    ];
+    const sectors = groupBy(positions, 'sector');
+    assert.deepEqual(sectors.map((g) => [g.name, g.value, g.weight]), [['Tecnología', 600, 0.6], ['Bancos', 300, 0.3], [UNCLASSIFIED, 100, 0.1]]);
+    assert.deepEqual(sectors[0].tickers, ['B', 'C', 'A']); // de mayor a menor
+    const countries = groupBy(positions, 'country');
+    assert.deepEqual(countries.map((g) => [g.name, g.weight]), [['Estados Unidos', 0.4], ['Argentina', 0.3], ['China', 0.2], [UNCLASSIFIED, 0.1]]);
+  });
+});
 
 describe('Precio promedio', () => {
   test('dos compras a distinto precio: el promedio queda en el medio', () => {

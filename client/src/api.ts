@@ -35,6 +35,17 @@ export interface PortfolioPosition extends Position {
   type: AssetType;
   weight: number;
   cedearGap: number | null;
+  /** null = la app no sabe de qué sector o país es ("Sin clasificar"). */
+  sector: string | null;
+  country: string | null;
+}
+
+/** Un sector o un país: cuánto de la cartera está puesto ahí. */
+export interface ExposureGroup {
+  name: string;
+  value: number;
+  weight: number;
+  tickers: string[];
 }
 
 export interface FxLatest {
@@ -62,6 +73,7 @@ export interface Portfolio {
   };
   realReturn: { gain: number; pct: number; irr: number | null } | null;
   positions: PortfolioPosition[];
+  exposure: { sectors: ExposureGroup[]; countries: ExposureGroup[] };
   lastSync: number | null;
   errors: string[];
 }

@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import type { Currency, ExposureGroup } from '../api';
 import { usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
 import { money, share } from '../format';
@@ -8,6 +9,38 @@ import { PortfolioTreemap } from '../components/PortfolioTreemap';
 // Un color por tipo de activo (no uno por activo: con muchos activos los colores se repetían)
 const TYPE_COLOR = { ACCION: '#5a9bb0', CEDEAR: '#7c6bb0' } as const;
 const CONCENTRATION_LIMIT = 0.35;
+const UNCLASSIFIED = 'Sin clasificar';
+
+/** Barras de cuánto pesa cada sector o país, con los activos de cada uno. */
+function Exposure({ title, groups, currency }: { title: string; groups: ExposureGroup[]; currency: Currency }) {
+  const max = Math.max(...groups.map((g) => g.weight));
+  const unknown = groups.find((g) => g.name === UNCLASSIFIED);
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-panel p-5">
+      <h2 className="font-medium">{title}</h2>
+      {groups.map((g) => (
+        <div key={g.name} className="flex flex-col gap-1">
+          <div className="tabular flex items-baseline justify-between gap-3 text-sm">
+            <span className={g.name === UNCLASSIFIED ? 'text-muted' : ''}>{g.name}</span>
+            <span>
+              <span className="mr-3 text-muted">{money(g.value, currency, false, true)}</span>
+              {share(g.weight)}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-card">
+            <div className={`h-full rounded-full ${g.name === UNCLASSIFIED ? 'bg-muted' : 'bg-accent'}`} style={{ width: `${(g.weight / max) * 100}%` }} />
+          </div>
+          <p className="text-xs text-muted">{g.tickers.join(' · ')}</p>
+        </div>
+      ))}
+      {unknown && (
+        <p className="text-xs text-muted">
+          "Sin clasificar": activos que la app todavía no tiene en su lista y de los que la fuente de precios no informa el dato.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function CompositionPage() {
   const { currency } = useSettings();
@@ -25,6 +58,8 @@ export function CompositionPage() {
     return { type: t, value, weight: total > 0 ? value / total : 0 };
   });
   const concentrated = rows.filter((r) => r.weight > CONCENTRATION_LIMIT);
+  // El sector que más pesa (sin contar lo que no se pudo clasificar ni los fondos, que ya son variados)
+  const topSector = data.exposure.sectors.find((g) => g.name !== UNCLASSIFIED && g.name !== 'ETF');
 
   return (
     <div className="flex flex-col gap-6">
@@ -73,6 +108,18 @@ export function CompositionPage() {
           </div>
         ))}
       </section>
+
+      {/* Exposición real: diez activos distintos pueden ser casi todos del mismo sector o país */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Exposure title="Por sector" groups={data.exposure.sectors} currency={currency} />
+        <Exposure title="Por país de la empresa" groups={data.exposure.countries} currency={currency} />
+      </section>
+      {topSector && topSector.weight > CONCENTRATION_LIMIT && topSector.tickers.length > 1 && (
+        <p className="rounded-lg border border-[#b8964f]/30 bg-[#b8964f]/10 px-4 py-3 text-sm text-[#c9ab6a]">
+          El {share(topSector.weight)} de tu cartera está en {topSector.name} ({topSector.tickers.join(', ')}). Son activos distintos, pero
+          suelen subir y bajar juntos: si a ese sector le va mal, te afecta en todos a la vez.
+        </p>
+      )}
 
       {concentrated.length > 0 && (
         <p className="rounded-lg border border-[#b8964f]/30 bg-[#b8964f]/10 px-4 py-3 text-sm text-[#c9ab6a]">

@@ -18,6 +18,12 @@ const addAsset = (ticker: string) => {
 function fakeYahoo(status: (symbol: string) => number) {
   const log = { symbols: [] as string[], atOnce: 0, maxAtOnce: 0 };
   globalThis.fetch = (async (url: string | URL | Request) => {
+    // El buscador de Yahoo (para saber el sector) va aparte: no es un pedido de precios
+    const asked = new URL(String(url));
+    if (asked.pathname.endsWith('/search')) {
+      const symbol = asked.searchParams.get('q')!;
+      return new Response(JSON.stringify({ quotes: [{ symbol, sector: 'Financial Services', quoteType: 'EQUITY' }] }), { status: 200 });
+    }
     const symbol = decodeURIComponent(new URL(String(url)).pathname.split('/').pop()!);
     log.symbols.push(symbol);
     log.maxAtOnce = Math.max(log.maxAtOnce, ++log.atOnce);
@@ -39,6 +45,12 @@ describe('Pedidos a Yahoo', () => {
     assert.deepEqual(errors, []);
     assert.equal(yahoo.symbols.length, 12); // se pidieron todos...
     assert.equal(yahoo.maxAtOnce, 5); // ...pero de a 5 (antes: los 12 juntos)
+  });
+
+  test('un activo que la app no conoce: el sector se le pregunta a Yahoo y queda guardado en castellano', () => {
+    const sectors = all<{ sector: string | null }>("SELECT sector FROM assets WHERE ticker LIKE 'ACT%'").map((a) => a.sector);
+    assert.equal(sectors.length, 12);
+    assert.ok(sectors.every((x) => x === 'Finanzas')); // Yahoo dijo "Financial Services"
   });
 
   test('recién actualizados, una segunda vuelta no pide nada', async () => {
