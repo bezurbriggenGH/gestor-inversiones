@@ -21,6 +21,7 @@ import {
 import { buildHistory } from './services/history.ts';
 import { buildJournal, decisionOf } from './services/journal.ts';
 import { buildCosts, buildHoldComparison } from './services/review.ts';
+import { buildReview } from './services/diversification.ts';
 import { CSV_TEMPLATE, parseCsv } from './services/importer.ts';
 import { checkAlerts, listAlerts } from './services/alerts.ts';
 import { searchCatalog } from './catalog.ts';
@@ -72,7 +73,18 @@ router.get('/portfolio', async (req, res) => {
   const { currency, fx } = q(req);
   const portfolio = buildPortfolio(userId(res), currency, fx);
   const history = buildHistory(userId(res), 'ARS', fx);
-  res.json({ ...portfolio, realReturn: history.realReturn, errors });
+  const target = get<{ target_cedear: number | null }>('SELECT target_cedear FROM users WHERE id = ?', userId(res))?.target_cedear ?? null;
+  const review = buildReview(portfolio.positions, portfolio.exposure.sectors, target, arDate());
+  res.json({ ...portfolio, realReturn: history.realReturn, review, errors });
+});
+
+/** Objetivo de reparto: qué porcentaje de la cartera querés en CEDEARs (el resto, en acciones). null lo quita. */
+router.put('/target', (req, res) => {
+  const cedear = req.body?.cedear;
+  if (cedear !== null && !(Number.isInteger(cedear) && cedear >= 0 && cedear <= 100))
+    throw new HttpError(400, 'El objetivo tiene que ser un porcentaje entero entre 0 y 100');
+  run('UPDATE users SET target_cedear = ? WHERE id = ?', cedear === null ? null : cedear / 100, userId(res));
+  res.status(204).end();
 });
 
 router.get('/history', async (req, res) => {

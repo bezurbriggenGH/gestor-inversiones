@@ -16,6 +16,12 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Mapa de la cartera**: cada activo es un rectángulo del tamaño de tu tenencia, en verde o rojo según cómo le fue.
 - **Exposición por sector y por país**: cuánto de la cartera está en cada sector y en empresas de cada país. El dato sale del catálogo de la app;
   de un activo que no está en el catálogo se le pregunta el sector a Yahoo una vez, y lo que no se sabe figura como "Sin clasificar".
+- **Para revisar** (en Composición): solo los avisos que saltan, cada uno con su porqué. Un activo que pasa del 20% de la cartera,
+  un sector que pasa del 35% (los ETF no cuentan: ya vienen repartidos) y activos que se mueven casi igual y juntos pesan más del 20%.
+  "Se mueven casi igual" = correlación de 0,8 o más entre sus rendimientos semanales del último año, en dólares (en pesos la
+  devaluación hace que todo parezca moverse junto), con al menos 26 semanas en común. Si son todos de un sector ya avisado, no se repite.
+- **Objetivo de reparto**: qué porcentaje querés en CEDEARs y cuánto en acciones. Si te alejás más de 5 puntos, la app dice cuánto
+  poner de plata nueva solo en lo que falta (sin vender) o cuánto pasar de un tipo al otro.
 - **Comparativa**: compara tu cartera contra inflación, dólar MEP, plazo fijo, Merval y S&P 500,
   simulando que la misma plata entró y salió en las mismas fechas.
 - **Rendimiento real**: cuánto ganaste descontando la inflación, en total y por año.

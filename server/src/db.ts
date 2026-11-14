@@ -149,6 +149,11 @@ const migrations: string[] = [
   `
   ALTER TABLE assets ADD COLUMN sector TEXT;
   `,
+  // v6: objetivo de reparto de cada usuario: qué parte de la cartera quiere en CEDEARs (0 a 1).
+  // El resto va en acciones argentinas. NULL = sin objetivo.
+  `
+  ALTER TABLE users ADD COLUMN target_cedear REAL CHECK (target_cedear BETWEEN 0 AND 1);
+  `,
 ];
 
 function migrate() {

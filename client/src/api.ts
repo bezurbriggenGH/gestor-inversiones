@@ -74,8 +74,31 @@ export interface Portfolio {
   realReturn: { gain: number; pct: number; irr: number | null } | null;
   positions: PortfolioPosition[];
   exposure: { sectors: ExposureGroup[]; countries: ExposureGroup[] };
+  review: Review;
   lastSync: number | null;
   errors: string[];
+}
+
+/** Lo que conviene revisar de la cartera (Composición) */
+export type ReviewItem =
+  | { kind: 'activo'; tickers: string[]; weight: number }
+  | { kind: 'sector'; name: string; tickers: string[]; weight: number }
+  | { kind: 'juntos'; tickers: string[]; weight: number };
+
+export interface Rebalance {
+  current: number;
+  target: number;
+  onTarget: boolean;
+  over?: AssetType;
+  under?: AssetType;
+  move?: number;
+  newMoney?: number | null;
+}
+
+export interface Review {
+  items: ReviewItem[];
+  limits: { asset: number; sector: number };
+  target: Rebalance | null;
 }
 
 export interface Operation {
@@ -384,6 +407,8 @@ export const api = {
   logout: () => post<void>('/auth/logout'),
 
   portfolio: (c: Currency, k: FxKind) => request<Portfolio>(`/portfolio?${q(c, k)}`),
+  /** Objetivo: porcentaje entero de la cartera en CEDEARs (null lo quita) */
+  setTarget: (cedear: number | null) => request<void>('/target', { method: 'PUT', body: JSON.stringify({ cedear }) }),
   history: (c: Currency, k: FxKind) => request<History>(`/history?${q(c, k)}`),
   journal: (c: Currency, k: FxKind) => request<Journal>(`/journal?${q(c, k)}`),
   hold: (since: string, c: Currency, k: FxKind) => request<HoldComparison>(`/hold?since=${since}&${q(c, k)}`),

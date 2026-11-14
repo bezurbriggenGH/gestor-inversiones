@@ -4,7 +4,8 @@ import { useSettings } from '../settings';
 import { FX_LABEL, capitalize, date, dayLabel, latestPriceDate, money, pct, tone } from '../format';
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const CONCENTRATION_LIMIT = 0.35;
+// El mismo límite que usa "Para revisar" en Composición: un solo activo no debería pasar del 20%
+const CONCENTRATION_LIMIT = 0.2;
 /** Cada dato del panel de arriba va en su propio recuadro, más oscuro que el panel */
 const CARD = 'flex flex-col gap-1 rounded-lg border border-line/60 bg-bg/70 p-5';
 

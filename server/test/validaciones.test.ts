@@ -254,3 +254,29 @@ describe('Importar un ticker que la app no conoce', () => {
     assert.match(fila.errors.join(), /no encontramos ZZZ en BYMA/);
   });
 });
+
+describe('Objetivo de reparto (Composición)', () => {
+  for (const [caso, valor] of [
+    ['más de 100%', 150],
+    ['negativo', -10],
+    ['con decimales', 33.3],
+    ['texto', 'mitad'],
+  ] as const) {
+    test(`no se acepta un objetivo ${caso}`, async () => {
+      const r = await call('PUT', '/target', { cedear: valor });
+      assert.equal(r.status, 400);
+      assert.match(r.error ?? '', /entero entre 0 y 100/);
+    });
+  }
+
+  test('se guarda, la cartera lo devuelve y se puede quitar', async () => {
+    assert.equal((await call('PUT', '/target', { cedear: 30 })).status, 204);
+    // Solo hay acciones (AAA): 0% en CEDEARs, con objetivo 30% → faltan CEDEARs
+    const con = (await call('GET', '/portfolio')).body.review.target;
+    assert.equal(con.target, 0.3);
+    assert.equal(con.onTarget, false);
+    assert.equal(con.under, 'CEDEAR');
+    assert.equal((await call('PUT', '/target', { cedear: null })).status, 204);
+    assert.equal((await call('GET', '/portfolio')).body.review.target, null);
+  });
+});
