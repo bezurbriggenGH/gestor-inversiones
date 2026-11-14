@@ -20,6 +20,7 @@ import {
 } from './services/portfolio.ts';
 import { buildHistory } from './services/history.ts';
 import { buildJournal } from './services/journal.ts';
+import { buildCosts, buildHoldComparison } from './services/review.ts';
 import { CSV_TEMPLATE, parseCsv } from './services/importer.ts';
 import { checkAlerts, listAlerts } from './services/alerts.ts';
 import { searchCatalog } from './catalog.ts';
@@ -83,6 +84,20 @@ router.get('/history', async (req, res) => {
 router.get('/journal', (req, res) => {
   const { currency, fx } = q(req);
   res.json(buildJournal(userId(res), currency, fx));
+});
+
+/** ¿Y si no hubieras comprado ni vendido nada desde `since`? */
+router.get('/hold', (req, res) => {
+  const since = String(req.query.since ?? '');
+  if (!isRealDate(since)) throw new HttpError(400, 'Elegí una fecha válida');
+  const { currency, fx } = q(req);
+  res.json(buildHoldComparison(userId(res), currency, fx, since));
+});
+
+/** Cuánto pagaste en comisiones. */
+router.get('/costs', (req, res) => {
+  const { currency, fx } = q(req);
+  res.json(buildCosts(userId(res), currency, fx));
 });
 
 router.get('/search', (req, res) => {

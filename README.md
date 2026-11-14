@@ -19,6 +19,11 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Rendimiento real**: cuánto ganaste descontando la inflación, en total y por año.
 - **Dividendos**: detecta los dividendos que pagaron tus activos y te sugiere registrarlos con la retención habitual.
 - **Diario de decisiones**: para cada compra y venta, qué hizo el precio (en dólares) 30, 90 y 180 días después, y tu porcentaje de aciertos.
+  También dónde acertás más (comprando o vendiendo, en acciones o en CEDEARs, con o sin justificación) y, de cada venta,
+  cuánta plata dejaste de ganar o te ahorraste de perder al precio de hoy.
+- **¿Y si no hubieras tocado nada?**: compara lo que tenías un día, a precios de hoy, contra lo que hiciste de verdad. Dice en plata si operar te sumó o te restó.
+- **Comisiones**: cuánto pagaste por comprar y vender, por año, y qué parte de tu ganancia se llevaron.
+- **Informe**: todo lo importante en una hoja para guardar como PDF o imprimir.
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias.
@@ -86,6 +91,9 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/historia.test.ts` | TIR, rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta y que el Diario de decisiones juzgue en dólares |
+| `server/test/balance.test.ts` | ¿Y si no hubieras tocado nada?, comisiones, qué pasó con lo que vendiste y patrones del Diario |
+| `server/test/sincronizar.test.ts` | Pedidos a Yahoo: de a pocos, sin insistir después de un error |
+| `server/test/importador.test.ts` | Números y fechas de los archivos de los brokers |
 | `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
 | `server/test/validaciones.test.ts` | Casos límite cargados desde la app: cantidades negativas o con decimales, ventas de más, fechas imposibles, dividendos imposibles, borrar activos |
 | `server/test/cuentas.test.ts` | Registro e ingreso con email y contraseña |

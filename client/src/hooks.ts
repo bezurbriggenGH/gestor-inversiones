@@ -30,6 +30,20 @@ export function useJournal() {
   });
 }
 
+export function useHold(since: string) {
+  const { currency, fxKind } = useSettings();
+  return useQuery({
+    queryKey: ['hold', since, currency, fxKind],
+    queryFn: () => api.hold(since, currency, fxKind),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCosts() {
+  const { currency, fxKind } = useSettings();
+  return useQuery({ queryKey: ['costs', currency, fxKind], queryFn: () => api.costs(currency, fxKind), placeholderData: (prev) => prev });
+}
+
 export function useAsset(ticker: string) {
   const { currency, fxKind } = useSettings();
   return useQuery({
@@ -52,4 +66,4 @@ export function useAlerts() {
 }
 
 /** Claves que dependen de las operaciones: se recargan después de cualquier cambio. */
-export const DATA_KEYS = [['portfolio'], ['asset'], ['history'], ['journal'], ['operation'], ['alerts']];
+export const DATA_KEYS = [['portfolio'], ['asset'], ['history'], ['journal'], ['operation'], ['alerts'], ['hold'], ['costs']];

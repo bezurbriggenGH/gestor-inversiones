@@ -37,6 +37,7 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
   // Las fracciones que deja un split no son decisiones tuyas: no se juzgan
   const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO' && !o.auto);
 
+  const assetTypes = new Map(all<{ ticker: string; type: 'ACCION' | 'CEDEAR' }>('SELECT ticker, type FROM assets').map((a) => [a.ticker, a.type]));
   const priceCache = new Map<string, DateSeries>();
   const pricesOf = (ticker: string) => {
     let s = priceCache.get(ticker);
@@ -69,9 +70,21 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
       // Veredicto principal: a 90 días (o 30 si todavía no pasaron 90).
       // 180 días se muestra pero no decide: a ese plazo pesa más el mercado que la decisión.
       const main = [...horizons].reverse().find((h) => h.available && h.days <= MAIN_HORIZON);
+      // En una venta: la plata que dejaste de ganar (+) o que te ahorraste de perder (−) por haber
+      // vendido, mirando el precio de hoy. Se calcula en dólares, igual que el veredicto, y viendo la
+      // app en pesos se muestra en pesos de hoy. Con los pesos de cada fecha, la inflación haría que
+      // casi toda venta pareciera plata perdida. Ejemplo: vendí 4 a $150 con el dólar a $1.000
+      // (US$ 0,15); hoy vale $200 con el dólar a $1.250 (US$ 0,16) → 4 × US$ 0,01 = US$ 0,04 = $50 de hoy.
+      let missed: number | null = null;
+      if (type === 'VENTA' && !s.empty && !fx.empty) {
+        const usd = op.quantity * (s.at(lastDate) / fx.at(lastDate) - op.price / fx.at(op.date));
+        missed = currency === 'USD' ? usd : usd * fx.at(lastDate);
+      }
       return {
         id: op.id,
         ticker: op.ticker,
+        assetType: assetTypes.get(op.ticker) ?? 'CEDEAR',
+        missed,
         type,
         date: op.date,
         quantity: op.quantity,
@@ -101,15 +114,33 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind) {
     };
   };
 
+  // Qué pasó, en plata, con todo lo que vendiste
+  const sales = entries.filter((e) => e.missed != null);
+  const sold = {
+    count: sales.length,
+    // Ventas después de las cuales el precio siguió subiendo: lo que dejaste de ganar
+    missedCount: sales.filter((e) => e.missed! > 0).length,
+    missed: sales.reduce((acc, e) => acc + Math.max(e.missed!, 0), 0),
+    // Ventas después de las cuales el precio bajó: lo que te ahorraste de perder
+    savedCount: sales.filter((e) => e.missed! < 0).length,
+    saved: sales.reduce((acc, e) => acc + Math.max(-e.missed!, 0), 0),
+    // Positivo: en conjunto, vender te convino
+    net: sales.reduce((acc, e) => acc - e.missed!, 0),
+  };
+
   return {
     currency,
     entries,
+    sold,
     stats: {
       all: stats(entries),
       buys: stats(entries.filter((e) => e.type === 'COMPRA')),
       sells: stats(entries.filter((e) => e.type === 'VENTA')),
       withNote: stats(entries.filter((e) => e.hasNote)),
       withoutNote: stats(entries.filter((e) => !e.hasNote)),
+      // Patrones: ¿dónde acertás más?
+      acciones: stats(entries.filter((e) => e.assetType === 'ACCION')),
+      cedears: stats(entries.filter((e) => e.assetType === 'CEDEAR')),
     },
   };
 }

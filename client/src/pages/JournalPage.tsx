@@ -6,6 +6,7 @@ import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict, lacksPrices } from '../components/Verdict';
+import { Patterns, SoldSummary } from '../components/Balance';
 
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
   return (
@@ -35,18 +36,6 @@ export function JournalPage() {
     filter === 'TODAS' ? true : filter === 'PENDIENTE' ? !e.verdict : e.verdict === filter,
   );
 
-  // Conclusión: ¿justificar las decisiones mejora los resultados?
-  let insight: string | null = null;
-  if (s.withNote.judged >= 2 && s.withoutNote.judged >= 2 && s.withNote.hitRate != null && s.withoutNote.hitRate != null) {
-    const d = s.withNote.hitRate - s.withoutNote.hitRate;
-    insight =
-      Math.abs(d) < 0.05
-        ? 'Acertás más o menos igual con o sin justificación.'
-        : d > 0
-          ? `Cuando escribís por qué operás, acertás ${Math.round(d * 100)} puntos más. Seguí justificando tus decisiones.`
-          : `Curiosamente, acertás ${Math.round(-d * 100)} puntos menos en las operaciones que justificaste.`;
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -65,7 +54,8 @@ export function JournalPage() {
         <StatCard label="Con justificación" stats={s.withNote} sub={s.withoutNote.hitRate != null ? `sin: ${pct(s.withoutNote.hitRate).replace('+', '')}` : undefined} />
       </section>
 
-      {insight && <p className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">💡 {insight}</p>}
+      <Patterns journal={data} />
+      <SoldSummary journal={data} />
 
       <div className="flex flex-wrap gap-2">
         {(['TODAS', 'ACIERTO', 'ERROR', 'NEUTRAL', 'PENDIENTE'] as Filter[]).map((f) => (
@@ -99,6 +89,12 @@ export function JournalPage() {
               </div>
               {e.note_title && <p className="text-sm">“{e.note_title}”</p>}
               <p className="text-xs text-muted">{explainVerdict(e)}</p>
+              {e.missed != null && Math.abs(e.missed) >= 0.005 && (
+                <p className="tabular text-xs text-muted">
+                  Al precio de hoy: {e.missed > 0 ? 'dejaste de ganar' : 'te ahorraste de perder'}{' '}
+                  <span className={e.missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(e.missed), currency)}</span> por haber vendido.
+                </p>
+              )}
               <HorizonList entry={e} />
             </Link>
           </li>

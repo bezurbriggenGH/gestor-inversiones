@@ -5,6 +5,7 @@ import { useSettings } from '../settings';
 import { date, money, pct, tone } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
 import { LineChart, type ChartLine } from '../components/LineChart';
+import { CostsSection, HoldSection } from '../components/Balance';
 
 const COLORS: Record<BenchmarkKey, string> = {
   inflacion: '#c49a4a',
@@ -154,6 +155,10 @@ export function BenchmarkPage() {
         lo que sigue invertido. Inflación: índice UVA (sigue al CER). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
         índice y del CEDEAR SPY. Fuentes: ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
       </p>
+
+      {/* La otra comparación: contra vos mismo, si te hubieras quedado quieto */}
+      <HoldSection />
+      <CostsSection />
     </div>
   );
 }

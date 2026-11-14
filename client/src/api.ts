@@ -206,6 +206,9 @@ export interface JournalEntry {
   sinceChange: number | null;
   verdict: Verdict | null;
   verdictDays: number | null;
+  assetType: AssetType;
+  /** Solo en ventas: plata que dejaste de ganar (+) o te ahorraste de perder (−) por haber vendido, a valores de hoy. */
+  missed: number | null;
 }
 
 export interface JournalStats {
@@ -221,7 +224,36 @@ export interface JournalStats {
 export interface Journal {
   currency: Currency;
   entries: JournalEntry[];
-  stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote', JournalStats>;
+  stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
+  /** Qué pasó, en plata, con todo lo que vendiste. */
+  sold: { count: number; missedCount: number; missed: number; savedCount: number; saved: number; net: number };
+}
+
+/** ¿Y si no hubieras comprado ni vendido nada desde `since`? */
+export interface HoldComparison {
+  currency: Currency;
+  since: string;
+  firstDate: string | null;
+  frozenValue: number;
+  actualValue: number;
+  cash: number;
+  result: number;
+  diff: number;
+  trades: number;
+  rows: { ticker: string; heldThen: number; heldNow: number; frozenValue: number; actualValue: number; cash: number; trades: number; diff: number }[];
+}
+
+export interface Costs {
+  currency: Currency;
+  fees: number;
+  traded: number;
+  operations: number;
+  withoutFees: number;
+  withheld: number;
+  pctOfTraded: number;
+  gain: number;
+  pctOfGain: number | null;
+  byYear: { year: string; fees: number; traded: number; operations: number; pctOfTraded: number }[];
 }
 
 export interface SearchResult {
@@ -316,6 +348,8 @@ export const api = {
   portfolio: (c: Currency, k: FxKind) => request<Portfolio>(`/portfolio?${q(c, k)}`),
   history: (c: Currency, k: FxKind) => request<History>(`/history?${q(c, k)}`),
   journal: (c: Currency, k: FxKind) => request<Journal>(`/journal?${q(c, k)}`),
+  hold: (since: string, c: Currency, k: FxKind) => request<HoldComparison>(`/hold?since=${since}&${q(c, k)}`),
+  costs: (c: Currency, k: FxKind) => request<Costs>(`/costs?${q(c, k)}`),
   search: (text: string) => request<SearchResult[]>(`/search?q=${encodeURIComponent(text)}`),
 
   asset: (t: string, c: Currency, k: FxKind) => request<AssetDetail>(`/assets/${t}?${q(c, k)}`),
