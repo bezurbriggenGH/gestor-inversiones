@@ -134,7 +134,7 @@ export function xirr(flows: { date: string; amount: number }[]): number | null {
 export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   const ops = sortOps(getOperations(userId));
   const fx = loadFx(kind);
-  const empty = { currency, points: [], benchmarks: [], portfolio: null, realReturn: null, monthly: [] };
+  const empty = { currency, points: [], benchmarks: [], portfolio: null, realReturn: null, monthly: [], unpriced: [] };
   if (ops.length === 0) return empty;
 
   const start = ops[0].date;
@@ -185,12 +185,17 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   // no hay precios guardados (Yahoo no tiene historial de algunos CEDEARs). Usar el primer precio que
   // exista, que es posterior, inventa ganancias: 135 a $2.910 valuados ese mismo día a $5.850.
   const lastTradePrice = new Map<string, number>();
+  // Qué activos se valuaron así y entre qué fechas. La pantalla lo avisa: cuando aparece el primer precio
+  // real, toda la suba o baja de esos días cae de golpe en ese único día (y en ese mes del calendario).
+  const unpriced = new Map<string, { ticker: string; from: string; until: string | null }>();
   const valueOn = (date: string) => {
     let value = 0;
     for (const [t, qty] of holdings) {
       if (qty <= 1e-9) continue;
       const s = prices.get(t);
-      const price = s?.covers(date) ? s.at(date) : lastTradePrice.get(t);
+      const covered = s?.covers(date) ?? false;
+      const price = covered ? s!.at(date) : lastTradePrice.get(t);
+      if (!covered && price != null && !unpriced.has(t)) unpriced.set(t, { ticker: t, from: date, until: s && !s.empty ? s.dates[0] : null });
       if (price != null) value += qty * price;
     }
     return value;
@@ -282,6 +287,8 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     realReturn,
     // En pesos, cada mes también descontada la inflación de ese mes (en dólares no hace falta)
     monthly: monthlyReturns(points, currency === 'ARS' && !inflIdx.empty ? inflIdx : undefined),
+    // Activos que hubo que valuar a su último precio de compra o venta porque no había precios guardados
+    unpriced: [...unpriced.values()],
   };
 }
 

@@ -121,7 +121,7 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
             title="Lo máximo que llegaste a tener invertido de tu bolsillo: compras menos lo que ya recuperaste con ventas y dividendos"
           >
             <span className={`font-medium ${tone(s.totalGainPct)}`}>{pct(s.totalGainPct)}</span> sobre{' '}
-            {money(s.peakCapital, currency)} que llegaste a tener puesto
+            {money(s.peakCapital, currency)} que llegaste a tener puesto{currency === 'ARS' && ', en pesos sin descontar la inflación'}
           </span>
         )}
         {/* En pesos, la ganancia suma pesos de distintos años como si valieran lo mismo: al lado va lo que

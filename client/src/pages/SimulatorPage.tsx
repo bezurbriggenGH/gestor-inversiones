@@ -56,11 +56,14 @@ function Result({ sim }: { sim: Simulation }) {
   const { currency } = useSettings();
   const ok = sim.results.filter((r) => r.available);
   const asset = ok.find((r) => r.key === 'activo')!;
-  const others = ok.filter((r) => r.key !== 'activo');
+  // La inflación es una referencia, no una opción: el IPC no se puede comprar (lo que más se le parece,
+  // el plazo fijo UVA o los bonos CER, va con atraso). Se muestra aparte, no como algo que "convenía más".
+  const inflation = ok.find((r) => r.key === 'inflacion');
+  const others = ok.filter((r) => r.key !== 'activo' && r.key !== 'inflacion');
   const beat = others.filter((r) => asset.value > r.value).map((r) => BEAT[r.key]);
   const lost = others.filter((r) => asset.value <= r.value).map((r) => LOST[r.key]);
-  const ranking = [...ok].sort((a, b) => b.value - a.value);
-  const max = ranking[0].value;
+  const ranking = ok.filter((r) => r.key !== 'inflacion').sort((a, b) => b.value - a.value);
+  const max = Math.max(...ok.map((r) => r.value));
 
   const lines = useMemo<ChartLine[]>(
     () =>
@@ -86,6 +89,7 @@ function Result({ sim }: { sim: Simulation }) {
         <p className="mt-2 text-sm text-muted">
           {beat.length > 0 && <>Le ganó {joinNames(beat)}. </>}
           {lost.length > 0 && <>{beat.length > 0 ? 'Pero convenía más' : 'Convenía más'} {joinNames(lost)}. </>}
+          {inflation && <>{asset.value > inflation.value ? 'Le ganó a la inflación' : 'Quedó por debajo de la inflación'}. </>}
           {asset.annual != null && (
             <>
               Equivale a {pct(asset.annual)} por año durante {num(Math.round(sim.years * 10) / 10)} años.
@@ -109,7 +113,24 @@ function Result({ sim }: { sim: Simulation }) {
               </span>
             </div>
           ))}
+          {inflation && (
+            <div className="grid grid-cols-[1.5rem_8rem_1fr] items-center gap-3 border-t border-line pt-3 text-sm sm:grid-cols-[1.5rem_10rem_1fr_9rem]">
+              <span />
+              <span className="text-muted">{inflation.label} (referencia)</span>
+              <div className="h-5 rounded-sm bg-card">
+                <div className="h-full rounded-sm opacity-60" style={{ width: `${Math.max(2, (inflation.value / max) * 100)}%`, background: COLORS.inflacion }} />
+              </div>
+              <span className="tabular col-span-2 col-start-2 text-xs text-muted sm:col-span-1 sm:col-start-auto sm:text-right sm:text-sm">
+                {money(inflation.value, currency)} {pct(inflation.return)}
+              </span>
+            </div>
+          )}
         </div>
+        {inflation && (
+          <p className="mt-3 text-xs text-muted">
+            La inflación no está en el ranking: no es algo que se pueda comprar. Sirve para ver si la plata mantuvo su poder de compra.
+          </p>
+        )}
       </section>
 
       <section className="rounded-xl bg-panel p-5">

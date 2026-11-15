@@ -301,7 +301,7 @@ export function PortfolioPage() {
       )}
 
       {history.data && <Evolution history={history.data} />}
-      {history.data && history.data.monthly.length > 0 && <MonthlyReturns months={history.data.monthly} />}
+      {history.data && history.data.monthly.length > 0 && <MonthlyReturns months={history.data.monthly} unpriced={history.data.unpriced} />}
 
       {adding && <AddAssetDialog onClose={() => setAdding(false)} />}
     </div>

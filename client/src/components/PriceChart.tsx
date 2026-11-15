@@ -116,6 +116,10 @@ function outcome(op: Operation): { label: string; cls: string; text: string } {
   const d = op.decision;
   const buy = op.type === 'COMPRA';
   if (!d) return { label: 'Sin veredicto', cls: 'bg-card text-muted', text: '' };
+  // Comprar y vender lo mismo el mismo día no cambia la tenencia: no es una decisión (ver el Diario)
+  if (d.offset > 0.999) {
+    return { label: 'Se compensa', cls: 'bg-card text-muted', text: `Ese día también ${buy ? 'vendiste' : 'compraste'} lo mismo: tu tenencia no cambió.` };
+  }
   if (d.verdict && d.change != null) {
     const moved = `${d.change > 0 ? 'subió' : 'bajó'} ${pct(Math.abs(d.change)).replace('+', '')} en dólares a los ${d.days} días`;
     if (d.verdict === 'NEUTRAL') return { label: 'Neutral', cls: 'bg-card text-muted', text: `El precio casi no se movió (${pct(d.change)} en dólares a los ${d.days} días).` };
@@ -137,7 +141,8 @@ function outcome(op: Operation): { label: string; cls: string; text: string } {
 /** La tarjeta que aparece al pasar el cursor por una marca: qué hiciste, por qué y cómo salió. */
 function OperationCard({ op, currency }: { op: Operation; currency: Currency }) {
   const o = outcome(op);
-  const missed = op.decision?.missed;
+  // Una venta que se compensa con una compra del mismo día no te hizo ganar ni ahorrar nada
+  const missed = op.decision && op.decision.offset < 0.999 ? op.decision.missed : null;
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -160,7 +165,7 @@ function OperationCard({ op, currency }: { op: Operation; currency: Currency }) 
       )}
       {op.firstImageId != null && <img src={imageUrl(op.firstImageId)} alt="" className="max-h-28 w-full rounded-md object-cover" loading="lazy" />}
       {o.text && <p className="text-xs leading-relaxed">{o.text}</p>}
-      {op.decision?.verdict && <MarketLine type={op.type} market={op.decision.market} days={op.decision.days} />}
+      {op.decision?.verdict && op.decision.offset < 0.999 && <MarketLine type={op.type} market={op.decision.market} days={op.decision.days} />}
       {op.decision && soldWithinText({ type: op.type, verdict: op.decision.verdict, soldWithin: op.decision.soldWithin }, currency) && (
         <p className="tabular text-xs">{soldWithinText({ type: op.type, verdict: op.decision.verdict, soldWithin: op.decision.soldWithin }, currency)}</p>
       )}

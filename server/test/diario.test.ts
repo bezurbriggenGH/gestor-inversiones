@@ -99,7 +99,9 @@ describe('Diario de decisiones: contra el mercado', () => {
     run("INSERT OR IGNORE INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, 1000)", date);
   }
   run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (3, 'CED', 'COMPRA', '2025-07-01', 10, 1000)");
-  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (3, 'CED', 'VENTA', '2025-07-01', 5, 1000)");
+  // La venta va en otro usuario: comprar y vender lo mismo el mismo día se compensa y no cuenta en el Diario
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (6, 'Vende', 'vende@test.com', 'x')");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (6, 'CED', 'VENTA', '2025-07-01', 5, 1000)");
 
   test('una compra que subió 5% es acierto, pero contra un mercado que subió 10% perdió 4,5%', () => {
     const j = buildJournal(3, 'ARS', 'bolsa');
@@ -112,11 +114,13 @@ describe('Diario de decisiones: contra el mercado', () => {
   });
 
   test('una venta antes de que el activo ande peor que el mercado le gana al mercado', () => {
-    const j = buildJournal(3, 'ARS', 'bolsa');
+    const j = buildJournal(6, 'ARS', 'bolsa');
     const venta = j.entries.find((e) => e.type === 'VENTA')!;
     assert.equal(venta.verdict, 'ERROR'); // el precio subió después de vender
     assert.equal(venta.market!.beat, true); // pero el mercado subió más: salir no fue peor que el índice
-    assert.deepEqual(j.vsMarket, { compared: 2, beat: 1, even: 0 });
+    // Compras y ventas, por separado
+    assert.deepEqual(j.vsMarket, { compared: 1, beat: 1, even: 0, buys: { compared: 0, beat: 0 }, sells: { compared: 1, beat: 1 } });
+    assert.deepEqual(buildJournal(3, 'ARS', 'bolsa').vsMarket.buys, { compared: 1, beat: 0 });
   });
 
   test('el gráfico del activo recibe la misma comparación', () => {
@@ -136,7 +140,7 @@ describe('Diario de decisiones: contra el mercado', () => {
     assert.equal(j.entries[0].verdict, 'ACIERTO'); // subió 9%
     assert.ok(near(j.entries[0].market!.relative, 1.09 / 1.1 - 1));
     assert.equal(j.entries[0].market!.beat, null);
-    assert.deepEqual(j.vsMarket, { compared: 0, beat: 0, even: 1 });
+    assert.deepEqual(j.vsMarket, { compared: 0, beat: 0, even: 1, buys: { compared: 0, beat: 0 }, sells: { compared: 0, beat: 0 } });
   });
 
   test('sin datos del índice en esas fechas no se compara (las acciones contra un Merval vacío)', () => {
@@ -229,5 +233,31 @@ describe('Una diferencia que depende de un solo activo no se afirma', () => {
 
   test('con 3 comparaciones a la vez se pide más: 2,01 veces alcanza para una sola, no para tres', () => {
     assert.equal(realDifference({ hits: 32, judged: 87 }, { hits: 84, judged: 168 }, 2.39), false);
+  });
+});
+
+describe('Comprar y vender lo mismo el mismo día', () => {
+  // El 02/04/2026 compro 6 y vendo 6 de OFS: la tenencia no cambia. Antes la venta figuraba como "te
+  // ahorraste de perder" y como acierto, y la compra como error.
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (7, 'Mismo día', 'mismodia@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('OFS', 'OFS.BA', 'Prueba', 'ACCION')");
+  run("INSERT INTO prices (ticker, date, close) VALUES ('OFS', '2026-01-02', 1000), ('OFS', '2026-04-02', 1200)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (7, 'OFS', 'COMPRA', '2026-01-02', 10, 1000)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (7, 'OFS', 'COMPRA', '2026-04-02', 6, 1200)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (7, 'OFS', 'VENTA', '2026-04-02', 6, 1200)");
+
+  test('se compensan: no son decisiones ni cuentan como plata ahorrada o perdida', () => {
+    const j = buildJournal(7, 'ARS', 'bolsa');
+    assert.equal(j.entries.length, 3); // en la lista se ven
+    assert.deepEqual(j.entries.filter((e) => e.date === '2026-04-02').map((e) => e.offset), [1, 1]);
+    assert.equal(j.stats.all.total, 1); // solo cuenta la compra de enero
+    assert.equal(j.sold.count, 0);
+  });
+
+  test('si se compensa solo una parte, cuenta lo que queda: compro 10 y vendo 4 el mismo día = compra de 6', () => {
+    run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (7, 'OFS', 'VENTA', '2026-01-02', 4, 1000)");
+    const enero = buildJournal(7, 'ARS', 'bolsa').entries.filter((e) => e.date === '2026-01-02');
+    assert.ok(near(enero.find((e) => e.type === 'COMPRA')!.offset, 0.4));
+    assert.equal(enero.find((e) => e.type === 'VENTA')!.offset, 1);
   });
 });

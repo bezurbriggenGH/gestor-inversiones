@@ -363,6 +363,16 @@ export function getRawOperations(userId: number, ticker?: string): OperationRow[
  * si SPY pasó de ratio 20 a 60 (3:1), 10 CEDEARs a $47.010 pasan a ser 30 a $15.670.
  * El monto total no cambia, y el resultado tampoco.
  */
+/**
+ * Cuánto se multiplicó la cantidad por los splits posteriores a una fecha (1 si no hubo).
+ * Los precios guardados ya están en la escala de hoy: para volver a la escala de esa fecha, el precio
+ * se multiplica por este factor y la cantidad se divide. Ejemplo: AAPL tuvo un ×2 el 24/01/2024; el
+ * cierre guardado del 01/12/2023 es $8.663,75, pero ese día un CEDEAR valía $8.663,75 × 2 = $17.327,50.
+ */
+export function splitFactorAfter(ticker: string, date: string): number {
+  return all<{ factor: number }>('SELECT factor FROM split_events WHERE ticker = ? AND date > ?', ticker, date).reduce((f, s) => f * s.factor, 1);
+}
+
 export function adjustForSplits<T extends Pick<OperationRow, 'ticker' | 'date' | 'quantity' | 'price'>>(ops: T[]): (T & { splitFactor: number })[] {
   const splits = new Map<string, { date: string; factor: number }[]>();
   for (const t of new Set(ops.map((o) => o.ticker))) {
@@ -532,7 +542,10 @@ function pendingDividends(userId: number, asset: AssetRow) {
   return unregisteredDividends(events, registered)
     .map((e) => {
       const gross = e.quantity * e.amount;
-      return { date: e.date, amountPerShare: e.amount, quantity: e.quantity, gross, withholding: gross * rate, withholdingRate: rate };
+      // Se sugiere en la escala de esa fecha, como lo cargarías a mano (y como lo informó el broker): al
+      // guardarlo, la app lo ajusta por los splits posteriores. En la escala de hoy quedaría ajustado dos veces.
+      const f = splitFactorAfter(asset.ticker, e.date);
+      return { date: e.date, amountPerShare: e.amount * f, quantity: e.quantity / f, gross, withholding: gross * rate, withholdingRate: rate };
     });
 }
 

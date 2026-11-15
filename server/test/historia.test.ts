@@ -245,6 +245,10 @@ describe('Activo sin precios guardados de la época de la operación', () => {
     assert.ok(near(mar.gain, 30_712.5));
     assert.ok(near(mar.return, 30_712.5 / 392_850));
   });
+
+  test('se informa qué activo se valuó sin precios y desde cuándo hay precios, para avisarlo en pantalla', () => {
+    assert.deepEqual(buildHistory(2, 'ARS', 'bolsa').unpriced, [{ ticker: 'NUE', from: '2025-02-03', until: '2025-04-01' }]);
+  });
 });
 
 describe('Variación del día de la cartera', () => {

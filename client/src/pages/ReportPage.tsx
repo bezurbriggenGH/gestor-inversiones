@@ -141,7 +141,7 @@ export function ReportPage() {
             <tr className="border-b border-line">
               <th className="py-2 font-normal">Año</th>
               <th className="py-2 text-right font-normal">{realYears ? 'Rendimiento real' : 'Rendimiento'}</th>
-              <th className="py-2 text-right font-normal">{realYears ? 'Ganancia en pesos' : 'Ganancia'}</th>
+              <th className="py-2 text-right font-normal">{realYears ? 'Ganancia en pesos (sin descontar inflación)' : 'Ganancia'}</th>
             </tr>
           </thead>
           <tbody>

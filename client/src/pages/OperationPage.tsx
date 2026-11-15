@@ -176,10 +176,24 @@ export function OperationPage() {
         <section className="flex flex-col gap-2 rounded-xl bg-panel p-5">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-medium">¿Acertaste?</h2>
-            <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} noData={lacksPrices(entry)} />
+            {entry.offset > 0.999 ? (
+              <span className="rounded-md bg-card px-2 py-0.5 text-xs text-muted">Se compensa</span>
+            ) : (
+              <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} noData={lacksPrices(entry)} />
+            )}
           </div>
-          <p className="text-sm text-muted">{explainVerdict(entry)}</p>
-          <MarketLine className="text-sm" type={entry.type} market={entry.market} days={entry.verdictDays} />
+          {entry.offset > 0.999 ? (
+            // Comprar y vender lo mismo el mismo día no cambia la tenencia: no es una decisión
+            <p className="text-sm text-muted">
+              Ese día también {entry.type === 'COMPRA' ? 'vendiste' : 'compraste'} {entry.ticker}: se compensan y tu tenencia no cambió, así
+              que no cuenta como decisión en el Diario.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted">{explainVerdict(entry)}</p>
+              <MarketLine className="text-sm" type={entry.type} market={entry.market} days={entry.verdictDays} />
+            </>
+          )}
           <HorizonList entry={entry} />
         </section>
       )}

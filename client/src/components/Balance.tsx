@@ -66,7 +66,7 @@ export function HoldResult({ data }: { data: HoldComparison }) {
         Se compara lo que tenías el {date(data.since)}, a precios de hoy, contra lo que tenés hoy más la plata que sacaste (o menos la que
         pusiste) comprando y vendiendo desde entonces. Los dividendos no se cuentan en ninguno de los dos lados.
         {c === 'ARS' &&
-          ' La plata de cada compra y venta se pasa a pesos de hoy con el dólar: $600 de hace unos meses no valen lo mismo que $600 de hoy.'}
+          ' La plata de cada compra y venta se pasa a pesos de hoy con la inflación (IPC): $600 de hace unos meses no valen lo mismo que $600 de hoy.'}
       </p>
     </div>
   );
@@ -130,6 +130,23 @@ export function CostsResult({ data }: { data: Costs }) {
         )}
         .
       </p>
+      {/* En pesos, la cuenta de arriba mezcla pesos de distintos años: lo que importa es contra la inflación */}
+      {data.real && (
+        <p className="text-sm">
+          Descontada la inflación, son <span className="tabular font-semibold">{money(data.real.fees, 'ARS')}</span> de hoy
+          {data.real.pctOfGain != null ? (
+            <>
+              : se llevaron el <span className="tabular font-semibold">{share(data.real.pctOfGain)}</span> de lo que le habrías ganado a la
+              inflación sin pagarlas.
+            </>
+          ) : (
+            '.'
+          )}{' '}
+          <span className="text-xs text-muted">
+            Cada comisión se pasa a pesos de hoy con el IPC y se compara contra lo que le ganaste a la inflación (lo que muestra la portada).
+          </span>
+        </p>
+      )}
       <table className="tabular w-full text-sm">
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-line">
@@ -162,7 +179,8 @@ export function CostsResult({ data }: { data: Costs }) {
       <p className="text-xs text-muted">
         Comisiones, derechos de mercado e IVA de cada compra y venta, tal como se cargaron.
         {data.withoutFees > 0 && ` ${data.withoutFees} ${data.withoutFees === 1 ? 'operación no tiene' : 'operaciones no tienen'} comisión cargada.`}
-        {data.withheld > 0 && ` Aparte, de los dividendos te descontaron ${money(data.withheld, c)} en retenciones y gastos.`}
+        {data.withheld > 0 &&
+          ` Aparte, de los dividendos te descontaron ${money(data.withheld, c)} en retenciones y gastos (lo que figura en cada dividendo cargado). En los de CEDEARs, el broker suele acreditarlos ya descontada la retención de EE.UU. (en general 30%): esa parte no está en este número.`}
       </p>
     </div>
   );

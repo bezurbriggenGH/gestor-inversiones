@@ -32,6 +32,10 @@ for (const [ticker, date, px] of [
 ] as const) {
   run('INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)', ticker, date, px);
 }
+// Inflación (IPC): 0% hasta marzo de 2025, 25% en abril y 0% desde mayo. De marzo a hoy: ×1,25.
+for (const [date, pct] of [['2024-12-31', 0], ['2025-04-30', 25], ['2025-05-31', 0]] as const) {
+  run("INSERT INTO index_values (series, date, value) VALUES ('ipc', ?, ?)", date, pct);
+}
 for (const [date, usd] of [['2025-01-02', 1000], ['2025-03-03', 1000], ['2025-06-02', 1250]] as const) {
   run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, ?)", date, usd);
 }
@@ -48,7 +52,7 @@ describe('¿Y si no hubieras tocado nada?', () => {
     const h = buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01');
     assert.equal(h.frozenValue, 2000);
     assert.equal(h.actualValue, 6 * 200 + 5 * 30); // $1.350 en cartera
-    // $600 − $100 de marzo, con el dólar a $1.000, son US$ 0,50: con el dólar de hoy ($1.250), $625.
+    // $600 − $100 de marzo, con 25% de inflación desde entonces, son $625 de hoy.
     // Antes se sumaban $500 de marzo como si fueran de hoy.
     assert.ok(near(h.cash, 625));
     assert.ok(near(h.result, 1975));
@@ -56,7 +60,7 @@ describe('¿Y si no hubieras tocado nada?', () => {
     assert.equal(h.trades, 2);
   });
 
-  test('por activo: vender 4 AAA ($750 de hoy) que hoy valen $800 restó $50; BBB sumó $25', () => {
+  test('por activo: vender 4 AAA ($600 de marzo = $750 de hoy) que hoy valen $800 restó $50; BBB sumó $25', () => {
     // AAA: 6 × $200 + $600 × 1,25 − 10 × $200 = −$50. BBB: 5 × $30 − $100 × 1,25 = +$25
     const rows = buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01').rows;
     assert.deepEqual(rows.map((r) => r.ticker), ['BBB', 'AAA']);
@@ -64,10 +68,11 @@ describe('¿Y si no hubieras tocado nada?', () => {
     assert.ok(near(rows[1].diff, -50));
   });
 
-  test('en pesos da lo mismo que en dólares, multiplicado por el dólar de hoy', () => {
-    const ars = buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01');
-    const usd = buildHoldComparison(id, 'USD', 'bolsa', '2025-02-01');
-    assert.ok(near(ars.diff, usd.diff * 1250));
+  test('en pesos se usa la inflación, no el dólar: con un dólar que sube menos, el resultado cambia', () => {
+    // Si el dólar hubiera subido solo de $1.000 a $1.100, con el dólar daría $550 y con la inflación da $625
+    run("UPDATE fx_rates SET sell = 1100 WHERE kind = 'bolsa' AND date = '2025-06-02'");
+    assert.ok(near(buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01').cash, 625));
+    run("UPDATE fx_rates SET sell = 1250 WHERE kind = 'bolsa' AND date = '2025-06-02'");
   });
 
   test('si desde esa fecha no operé, no hay diferencia', () => {
@@ -110,6 +115,18 @@ describe('Comisiones', () => {
     const c = buildCosts(id, 'ARS', 'bolsa');
     assert.ok(near(c.gain, 591));
     assert.ok(near(c.pctOfGain!, 16 / 607));
+  });
+
+  test('descontada la inflación: $20 de hoy en comisiones contra $488,75 que le ganaste a la inflación', () => {
+    // Con 25% de inflación desde abril: $10 de enero y $6 de marzo son $12,50 + $7,50 = $20 de hoy.
+    // Contra la inflación: la compra de $1.010 son $1.262,50 de hoy; la venta de $594 y el dividendo de $7
+    // son $742,50 y $8,75 → "valdría" $511,25 y vale 5 × $200 = $1.000: le ganaste por $488,75.
+    // Sin comisiones habrías ganado $508,75: se llevaron 20 ÷ 508,75 = 3,9%.
+    const c = buildCosts(id, 'ARS', 'bolsa');
+    assert.ok(near(c.real!.fees, 20));
+    assert.ok(near(c.real!.gain, 488.75));
+    assert.ok(near(c.real!.pctOfGain!, 20 / 508.75));
+    assert.equal(buildCosts(id, 'USD', 'bolsa').real, null); // en dólares no hace falta
   });
 });
 

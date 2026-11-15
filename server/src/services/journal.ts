@@ -151,7 +151,7 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
   };
   const markets = { CEDEAR: loadIndex(MARKET.CEDEAR.series), ACCION: loadIndex(MARKET.ACCION.series) };
 
-  const entries = ops
+  const judgedEntries = ops
     .map((op) => {
       const assetType = assetTypes.get(op.ticker) ?? 'CEDEAR';
       const s = pricesOf(op.ticker);
@@ -222,12 +222,27 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     })
     .reverse();
 
+  // Comprar y vender lo mismo el mismo día no cambia la tenencia: no son dos decisiones contrarias (una
+  // "acierto" y la otra "error"), y la venta no "te ahorró" nada. `offset` es qué parte de la operación
+  // se compensa con otra del tipo contrario, del mismo activo y el mismo día (1 = toda).
+  // Ejemplo: el 21/09 compro 60 HUT y vendo 60 HUT → las dos tienen offset 1 y no cuentan en el Diario.
+  // Compro 100 y vendo 60 → la venta tiene offset 1 y la compra 0,6 (cuenta como compra de 40).
+  const qtyByDay = new Map<string, number>();
+  for (const e of judgedEntries) qtyByDay.set(`${e.ticker}|${e.date}|${e.type}`, (qtyByDay.get(`${e.ticker}|${e.date}|${e.type}`) ?? 0) + e.quantity);
+  const entries = judgedEntries.map((e) => {
+    const bought = qtyByDay.get(`${e.ticker}|${e.date}|COMPRA`) ?? 0;
+    const sold = qtyByDay.get(`${e.ticker}|${e.date}|VENTA`) ?? 0;
+    const own = e.type === 'COMPRA' ? bought : sold;
+    return { ...e, offset: own > 0 ? Math.min(bought, sold) / own : 0 };
+  });
+  const fullyOffset = (e: { offset: number }) => e.offset > 1 - 1e-9;
+
   // Para los porcentajes, una decisión es un activo, un día y un tipo (compra o venta): el broker suele
   // partir una orden en varias, y contar cada pedazo como una decisión aparte inflaría la cantidad de
   // casos (y haría parecer más seguro un porcentaje que sale de pocas decisiones reales).
   // De cada grupo decide el pedazo más grande; tiene justificación si alguno la tiene.
   const decisionMap = new Map<string, (typeof entries)[number] & { hasNote: boolean }>();
-  for (const e of entries) {
+  for (const e of entries.filter((x) => !fullyOffset(x))) {
     const key = `${e.ticker}|${e.date}|${e.type}`;
     const prev = decisionMap.get(key);
     if (!prev) decisionMap.set(key, e);
@@ -260,8 +275,8 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     return robustDifference(judged(a), judged(b));
   };
 
-  // Qué pasó, en plata, con todo lo que vendiste
-  const sales = entries.filter((e) => e.missed != null);
+  // Qué pasó, en plata, con todo lo que vendiste (sin la parte que recompraste el mismo día)
+  const sales = entries.filter((e) => e.missed != null && !fullyOffset(e)).map((e) => ({ ...e, missed: e.missed! * (1 - e.offset) }));
   const sold = {
     count: sales.length,
     // Ventas después de las cuales el precio siguió subiendo: lo que dejaste de ganar
@@ -301,10 +316,18 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
   // índice. Las que quedaron a menos de 2% del índice son empates y se informan aparte.
   const withMarket = decisions.filter((e) => e.market && e.verdictDays === MAIN_HORIZON);
   const compared = withMarket.filter((e) => e.market!.beat != null);
+  // Compras y ventas por separado: no tienen la misma vara. Como la mayoría de las acciones anda peor que
+  // el índice, una compra al azar le gana menos de la mitad de las veces y una venta al azar, más.
+  const split = (type: 'COMPRA' | 'VENTA') => {
+    const list = compared.filter((e) => e.type === type);
+    return { compared: list.length, beat: list.filter((e) => e.market!.beat).length };
+  };
   const vsMarket = {
     compared: compared.length,
     beat: compared.filter((e) => e.market!.beat).length,
     even: withMarket.length - compared.length,
+    buys: split('COMPRA'),
+    sells: split('VENTA'),
   };
 
   const groups = {
@@ -358,6 +381,7 @@ export function decisionOf(entry: ReturnType<typeof buildJournal>['entries'][num
     missed: entry.missed,
     soldWithin: entry.soldWithin,
     market: entry.market,
+    offset: entry.offset,
     // Ya pasó el plazo, pero no hay precios guardados de esa época para juzgarla
     noData: !entry.verdict && entry.horizons.some((h) => !h.available && 'noData' in h),
   };

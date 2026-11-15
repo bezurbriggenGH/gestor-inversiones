@@ -67,6 +67,12 @@ export function JournalPage() {
               {m.even > 0 && <span className="text-muted"> Otras {m.even} quedaron a menos de 2% del mercado: empates, no cuentan.</span>}
               {m.compared < MIN_JUDGED && <span className="text-muted"> Son muy pocas todavía para sacar conclusiones.</span>}
             </p>
+            {/* Compras y ventas por separado: no se miden con la misma vara (ver la explicación de abajo) */}
+            <p className="tabular mt-1 text-sm text-muted">
+              Compras: {m.buys.beat} de {m.buys.compared}
+              {m.buys.compared > 0 && ` (${pct(m.buys.beat / m.buys.compared, 0).replace('+', '')})`} · Ventas: {m.sells.beat} de {m.sells.compared}
+              {m.sells.compared > 0 && ` (${pct(m.sells.beat / m.sells.compared, 0).replace('+', '')})`}
+            </p>
           </>
         ) : (
           <p className="mt-1 text-sm">Todavía no hay decisiones con datos del mercado para comparar.</p>
@@ -75,8 +81,9 @@ export function JournalPage() {
           Cada compra y venta se compara con lo que hizo en esos mismos días el S&amp;P 500 (CEDEARs) o el Merval (acciones), en dólares.
           Ejemplo: compraste y a los 90 días subió 5%, pero el S&amp;P 500 subió 10%: el precio subió, pero te habría ido mejor en el índice.
           Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice. Solo cuentan las decisiones que ya cumplieron
-          90 días. No hay un porcentaje "normal" contra el cual medirlo: unas pocas empresas explican gran parte de la suba del índice, así
-          que la mayoría de las acciones individuales anda peor que él, y elegir al azar suele ganarle menos de la mitad de las veces.
+          90 días. Compras y ventas no se miden con la misma vara: unas pocas empresas explican gran parte de la suba del índice, así que la
+          mayoría de las acciones individuales anda peor que él. Por eso una compra al azar suele ganarle al mercado menos de la mitad de las
+          veces, y una venta al azar, más de la mitad.
         </p>
       </section>
 
@@ -133,14 +140,33 @@ export function JournalPage() {
                   {date(e.date)} · {num(e.quantity)} a {money(e.price, currency)}
                 </span>
                 <span className="ml-auto">
-                  <VerdictBadge verdict={e.verdict} days={e.verdictDays} noData={lacksPrices(e)} />
+                  {e.offset > 0.999 ? (
+                    <span className="rounded-md bg-card px-2 py-0.5 text-xs text-muted">Se compensa</span>
+                  ) : (
+                    <VerdictBadge verdict={e.verdict} days={e.verdictDays} noData={lacksPrices(e)} />
+                  )}
                 </span>
               </div>
               {e.note_title && <p className="text-sm">“{e.note_title}”</p>}
-              <p className="text-xs text-muted">{explainVerdict(e)}</p>
-              <MarketLine type={e.type} market={e.market} days={e.verdictDays} />
+              {e.offset > 0.999 ? (
+                // Comprar y vender lo mismo el mismo día no cambia lo que tenés: no es una decisión
+                <p className="text-xs text-muted">
+                  Ese día también {e.type === 'COMPRA' ? 'vendiste' : 'compraste'} {e.ticker}: se compensan y tu tenencia no cambió, así que no
+                  cuenta como decisión en el Diario.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted">{explainVerdict(e)}</p>
+                  {e.offset > 0 && (
+                    <p className="text-xs text-muted">
+                      Ese día también {e.type === 'COMPRA' ? 'vendiste' : 'compraste'} {e.ticker}: cuenta solo la parte que no se compensa.
+                    </p>
+                  )}
+                  <MarketLine type={e.type} market={e.market} days={e.verdictDays} />
+                </>
+              )}
               {soldWithinText(e, currency) && <p className="tabular text-xs">{soldWithinText(e, currency)}</p>}
-              {e.missed != null && Math.abs(e.missed) >= 0.005 && (
+              {e.missed != null && e.offset < 0.999 && Math.abs(e.missed) >= 0.005 && (
                 <p className="tabular text-xs text-muted">
                   Al precio de hoy: {e.missed > 0 ? 'dejaste de ganar' : 'te ahorraste de perder'}{' '}
                   <span className={e.missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(e.missed), currency)}</span> por haber vendido.

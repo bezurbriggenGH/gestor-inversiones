@@ -16,7 +16,7 @@ export const monthValue = (m: History['monthly'][number]) => m.real ?? m.return;
 const short = (r: number) => `${r > 0 ? '+' : ''}${(r * 100).toFixed(1).replace('.', ',')}%`;
 
 /** Calendario de rendimientos: un casillero por mes, verde si ganaste y rojo si perdiste. */
-export function MonthlyReturns({ months }: { months: History['monthly'] }) {
+export function MonthlyReturns({ months, unpriced = [] }: { months: History['monthly']; unpriced?: History['unpriced'] }) {
   const { currency } = useSettings();
   const byYear = new Map<string, Map<number, History['monthly'][number]>>();
   for (const m of months) {
@@ -25,6 +25,11 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
     byYear.get(y)!.set(Number(mm) - 1, m);
   }
   const years = [...byYear.keys()].sort().reverse();
+  // Meses en que apareció el primer precio de un activo que venía valuado a su precio de compra: ahí cae de
+  // golpe toda la suba o baja de los días sin precio
+  const late = unpriced.filter((u) => u.until != null);
+  const jumpMonths = new Set(late.map((u) => u.until!.slice(0, 7)));
+  const fmt = (iso: string) => iso.split('-').reverse().join('/');
 
   const real = months.some((m) => m.real != null);
   const best = months.reduce((a, b) => (monthValue(b) > monthValue(a) ? b : a));
@@ -79,6 +84,7 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
                         }
                       >
                         {short(monthValue(m))}
+                        {jumpMonths.has(m.month) && '*'}
                       </td>
                     ) : (
                       <td key={i} className="rounded-md bg-card/40 py-2 text-muted/40">
@@ -102,6 +108,13 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
         {real && ' Se descuenta la inflación de ese mes (IPC): con 4% de inflación, un mes de +4% en pesos es quedarse igual.'} Pasá el mouse
         por un mes para ver el detalle.
       </p>
+      {late.length > 0 && (
+        <p className="mt-1 text-xs text-muted">
+          * {late.map((u) => `${u.ticker} (desde el ${fmt(u.until!)})`).join(', ')}: no hay precios guardados de antes de esa fecha. Hasta
+          entonces se valúan a tu último precio de compra o venta, y toda la suba o baja de ese tiempo cae ese día. El total está bien; lo que
+          puede estar corrido es el mes en que cae.
+        </p>
+      )}
       <p className="mt-1 text-xs text-muted">
         ¿Por qué el año de acá no coincide con el rendimiento por año de arriba? Miden cosas distintas, y las dos están bien. Arriba (la TIR)
         se mide tu plata: pesan más los meses en que tenías más puesto. Acá cada mes pesa igual, tengas mucho o poco: mide qué tan buenas

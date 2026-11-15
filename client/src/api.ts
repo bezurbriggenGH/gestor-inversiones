@@ -152,6 +152,8 @@ export interface OperationDecision {
   soldWithin: { quantity: number; realized: number } | null;
   /** Qué hizo el mercado en el mismo plazo, y si la decisión le ganó. */
   market: JournalEntry['market'];
+  /** Qué parte se compensa con una operación contraria del mismo día (ver JournalEntry). */
+  offset: number;
   /** Ya pasó el plazo pero no hay precios guardados de esa época. */
   noData: boolean;
 }
@@ -254,6 +256,8 @@ export interface History {
   realReturn: { gain: number; pct: number | null; irr: number | null } | null;
   /** Rendimiento de cada mes. En pesos, `real` es el mismo descontada la inflación de esos días (en dólares, null). */
   monthly: { month: string; return: number; gain: number; inflation: number | null; real: number | null }[];
+  /** Activos valuados a su último precio de operación porque no había precios guardados, y desde cuándo hay (until). */
+  unpriced: { ticker: string; from: string; until: string | null }[];
 }
 
 export type Verdict = 'ACIERTO' | 'ERROR' | 'NEUTRAL';
@@ -279,9 +283,13 @@ export interface JournalEntry {
   realized: number | null;
   /** Solo en compras: lo que vendiste de ese activo dentro del plazo del veredicto, y con qué resultado. */
   soldWithin: { quantity: number; realized: number } | null;
-  /** Qué hizo el mercado (S&P 500 o Merval, en dólares) en el mismo plazo del veredicto, y si la decisión le ganó. */
-  /** `beat`: le ganó al mercado (true), perdió (false) o empató: menos de 2% de diferencia (null). */
+  /**
+   * Qué hizo el mercado (S&P 500 o Merval, en dólares) en el mismo plazo del veredicto, y si la decisión le ganó.
+   * `beat`: le ganó al mercado (true), perdió (false) o empató: menos de 2% de diferencia (null).
+   */
   market: { label: string; change: number; relative: number; beat: boolean | null } | null;
+  /** Qué parte se compensa con una operación contraria del mismo activo y el mismo día (1 = toda: no cuenta). */
+  offset: number;
 }
 
 /** Porcentajes del Diario. Cuentan decisiones: una orden que el broker partió en varias es una sola. */
@@ -300,7 +308,7 @@ export interface Journal {
   entries: JournalEntry[];
   /** En cuántas decisiones ya evaluadas elegiste mejor que quedarte en el mercado. */
   /** Decisiones ya evaluadas a 90 días: cuántas le ganaron al mercado, de cuántas, y cuántas empataron (aparte). */
-  vsMarket: { compared: number; beat: number; even: number };
+  vsMarket: { compared: number; beat: number; even: number; buys: { compared: number; beat: number }; sells: { compared: number; beat: number } };
   stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
   /** Qué pasó, en plata, con todo lo que vendiste. */
   sold: { count: number; missedCount: number; missed: number; savedCount: number; saved: number; net: number };
@@ -337,6 +345,8 @@ export interface Costs {
   pctOfTraded: number;
   gain: number;
   pctOfGain: number | null;
+  /** En pesos: comisiones llevadas a pesos de hoy, contra lo que le ganaste a la inflación (en dólares, null). */
+  real: { fees: number; gain: number; pctOfGain: number | null } | null;
   byYear: { year: string; fees: number; traded: number; operations: number; pctOfTraded: number }[];
 }
 

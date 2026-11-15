@@ -7,21 +7,30 @@
 //    ($600) y con $100 compraste otra cosa que hoy vale $150: tenés $1.200 + $150 en cartera y
 //    $500 en el bolsillo = $1.850. Operar te restó $150.
 //    Los dividendos no se cuentan en ninguno de los dos lados (casi no cambian con lo que operaste).
-//    Viendo en pesos, la plata de cada compra y venta se lleva a pesos de hoy a través del dólar (como
-//    en el Diario): $600 de marzo no valen lo mismo que $600 de hoy. Ejemplo: vendí por $600 con el
-//    dólar a $1.000 (US$ 0,60); hoy el dólar está a $1.250 → cuentan como $750 de hoy.
+//    Viendo en pesos, la plata de cada compra y venta se lleva a pesos de hoy con la inflación (IPC),
+//    la misma vara que el rendimiento real de la portada: $600 de marzo no valen lo mismo que $600 de
+//    hoy. Ejemplo: vendí por $600 y desde entonces la inflación fue 25% → cuentan como $750 de hoy.
 //
-// 2. Comisiones: cuánto pagaste por comprar y vender, y qué parte de tu ganancia se llevaron.
+// 2. Comisiones: cuánto pagaste por comprar y vender, y qué parte de tu ganancia se llevaron. En pesos,
+//    también en pesos de hoy y contra la ganancia descontada la inflación (ver buildCosts).
 import { get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
-import { buildPortfolio, getOperations, loadFx, makeConverter, opTotal, sortOps, type Currency } from './portfolio.ts';
+import { buildHistory, inflationSeries } from './history.ts';
+import { DateSeries, buildPortfolio, getOperations, loadFx, makeConverter, opTotal, sortOps, type Currency } from './portfolio.ts';
+
+/** Lleva pesos de una fecha a pesos de hoy con la inflación. Sin índice, los deja como están. */
+function toTodayPesos(inflation: DateSeries): (ars: number, date: string) => number {
+  if (inflation.empty) return (ars) => ars;
+  const today = inflation.at(inflation.dates[inflation.dates.length - 1]);
+  return (ars, date) => (ars * today) / inflation.at(date);
+}
 
 export function buildHoldComparison(userId: number, currency: Currency, kind: FxKind, since: string) {
   const fx = loadFx(kind);
   const conv = makeConverter(currency, fx);
-  // La plata de cada operación, en la moneda elegida y llevada a hoy (ver arriba)
-  const today = fx.latest();
-  const cashConv = (amount: number, date: string) => (currency === 'ARS' && today ? (amount / fx.at(date)) * today.rate : conv(amount, date));
+  // La plata de cada operación, en la moneda elegida: en pesos, llevada a pesos de hoy (ver arriba);
+  // en dólares, con el dólar de su día
+  const cashConv = currency === 'ARS' ? toTodayPesos(inflationSeries()) : conv;
   const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO');
 
   const byTicker = new Map<string, typeof ops>();
@@ -105,6 +114,19 @@ export function buildCosts(userId: number, currency: Currency, kind: FxKind) {
   // La ganancia ya tiene descontadas las comisiones: se compara contra lo que hubieras ganado sin pagarlas
   const gain = buildPortfolio(userId, currency, kind).summary.totalGain;
   const gainBeforeFees = gain + fees;
+
+  // En pesos, lo mismo descontada la inflación: sumar comisiones de 2024 y de 2026 como si fueran los mismos
+  // pesos subestima las viejas, y la ganancia en pesos sin ajustar está inflada. Cada comisión se lleva a
+  // pesos de hoy, y se compara contra lo que le ganaste a la inflación (lo que muestra la portada).
+  // Ejemplo: $100 de comisión con 50% de inflación desde entonces son $150 de hoy; si le ganaste a la
+  // inflación por $100, sin comisiones le habrías ganado por $250: se llevaron 150 ÷ 250 = 60%.
+  let real: { fees: number; gain: number; pctOfGain: number | null } | null = null;
+  const realGain = currency === 'ARS' ? buildHistory(userId, 'ARS', kind).realReturn?.gain : undefined;
+  if (realGain != null) {
+    const toToday = toTodayPesos(inflationSeries());
+    const realFees = ops.filter((o) => o.type !== 'DIVIDENDO').reduce((acc, o) => acc + toToday(o.fees, o.date), 0);
+    real = { fees: realFees, gain: realGain, pctOfGain: realGain + realFees > 0 ? realFees / (realGain + realFees) : null };
+  }
   return {
     currency,
     fees,
@@ -115,6 +137,7 @@ export function buildCosts(userId: number, currency: Currency, kind: FxKind) {
     pctOfTraded: traded > 0 ? fees / traded : 0,
     gain,
     pctOfGain: gainBeforeFees > 0 ? fees / gainBeforeFees : null,
+    real,
     byYear: [...years.values()].sort((a, b) => a.year.localeCompare(b.year)).map((y) => ({ ...y, pctOfTraded: y.traded > 0 ? y.fees / y.traded : 0 })),
   };
 }

@@ -363,3 +363,48 @@ describe('Objetivo de reparto (Composición)', () => {
     assert.equal((await call('GET', '/portfolio')).body.review.target, null);
   });
 });
+
+describe('Importar operaciones repetidas idénticas', () => {
+  // Pasa de verdad: dos compras de 1 SCCO el mismo día al mismo precio (el broker partió la orden)
+  test('si ya hay 2 compras iguales y el archivo trae 3, entra 1 (no se pierde la tercera)', async () => {
+    run("INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES ('DUP', 'DUP.BA', 'Prueba', 'ACCION', ?)", Date.now());
+    run("INSERT INTO prices (ticker, date, close) VALUES ('DUP', '2025-02-10', 100)");
+    run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'DUP')");
+    run("INSERT INTO sync_state (key, value) VALUES ('splits:DUP', ?)", Date.now());
+    for (let i = 0; i < 2; i++) {
+      const r = await call('POST', '/assets/DUP/operations', { type: 'COMPRA', date: '2025-02-10', quantity: 5, price: 100, fees: 0 });
+      assert.equal(r.status, 201, r.error ?? '');
+    }
+    const fila = '10/02/2025;Compra;DUP;5;100;0';
+    const csv = ['Fecha;Tipo;Ticker;Cantidad;Precio;Comision', fila, fila, fila].join('\n');
+    const preview = await call('POST', '/import', { csv, commit: false });
+    assert.deepEqual(preview.body.rows.map((f: { status: string }) => f.status), ['duplicada', 'duplicada', 'ok']);
+    await call('POST', '/import', { csv, commit: true });
+    const detalle = await call('GET', '/assets/DUP?currency=ARS&fx=bolsa');
+    assert.equal(detalle.body.position.quantity, 15); // antes quedaban 10
+    // Importarlo otra vez: ahora las 3 están cargadas
+    const again = await call('POST', '/import', { csv, commit: false });
+    assert.deepEqual(again.body.rows.map((f: { status: string }) => f.status), ['duplicada', 'duplicada', 'duplicada']);
+  });
+});
+
+describe('Un dividendo con un cero de más', () => {
+  // DVD: 10 acciones a $100 = $1.000. Un dividendo de más de la mitad ($500) no existe.
+  test('cargado como "1 × el total", se rechaza si es más de la mitad de lo que valían tus acciones', async () => {
+    run("INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES ('DVD', 'DVD.BA', 'Prueba', 'ACCION', ?)", Date.now());
+    run("INSERT INTO prices (ticker, date, close) VALUES ('DVD', '2025-01-02', 100)");
+    run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'DVD')");
+    run("INSERT INTO sync_state (key, value) VALUES ('splits:DVD', ?)", Date.now());
+    assert.equal((await call('POST', '/assets/DVD/operations', { type: 'COMPRA', date: '2025-01-02', quantity: 10, price: 100, fees: 0 })).status, 201);
+    const div = (price: number) => call('POST', '/assets/DVD/operations', { type: 'DIVIDENDO', date: '2025-02-01', quantity: 1, price, fees: 0 });
+    const r = await div(5000);
+    assert.equal(r.status, 409);
+    assert.match(r.error!, /más de la mitad de lo que valían tus DVD/);
+    assert.equal((await div(40)).status, 201); // $40 sobre $1.000 (4%) es un dividendo normal
+  });
+
+  test('importado, también', async () => {
+    const r = await call('POST', '/import', { csv: 'Fecha;Tipo;Ticker;Cantidad;Precio;Comision\n03/02/2025;Dividendo;DVD;1;5000;0', commit: false });
+    assert.match(r.body.rows[0].errors.join(), /más de la mitad/);
+  });
+});

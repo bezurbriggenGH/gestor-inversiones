@@ -15,6 +15,7 @@ import {
   parseCurrency,
   parseFxKind,
   requireUserAsset,
+  splitFactorAfter,
   type OperationRow,
   type OpType,
 } from './services/portfolio.ts';
@@ -198,7 +199,12 @@ router.get('/assets/:ticker', async (req, res) => {
   });
 });
 
-/** Precio de cierre de una fecha (o el último anterior si fue feriado). Siempre en pesos. */
+/**
+ * Precio de cierre de una fecha (o el último anterior si fue feriado), en pesos y en la escala de esa
+ * fecha: es el que sugiere el formulario, y la operación se guarda tal como se cargó (después se ajusta
+ * por los splits posteriores). Con el cierre guardado, que ya está en la escala de hoy, una compra
+ * anterior a un split quedaba ajustada dos veces: 10 AAPL del 01/12/2023 se guardaban a la mitad del precio.
+ */
 router.get('/assets/:ticker/price', (req, res) => {
   const ticker = requireUserAsset(userId(res), normalizeTicker(req.params.ticker)).ticker;
   const date = typeof req.query.date === 'string' ? req.query.date : arDate();
@@ -208,7 +214,8 @@ router.get('/assets/:ticker/price', (req, res) => {
     date,
   );
   if (!row) throw new HttpError(404, 'No hay precio para esa fecha');
-  res.json(row);
+  // Los splits que rigen después de la fecha de la operación (no la del precio: si fue feriado, son iguales)
+  res.json({ date: row.date, close: row.close * splitFactorAfter(ticker, date) });
 });
 
 // ---------- Operaciones ----------
@@ -227,6 +234,8 @@ const MAX_PRICE = 1_000_000_000_000;
 // Un dividendo se paga semanas después de la fecha de corte: si vendiste en el medio,
 // lo cobrás igual. Por eso se mira lo máximo que tuviste en los 90 días anteriores al pago.
 const DIVIDEND_WINDOW_DAYS = 90;
+// Un dividendo no puede ser de más de la mitad de lo que valían las acciones (el mismo límite que clean.ts)
+const MAX_DIVIDEND_SHARE = 0.5;
 
 /**
  * Controla cantidad, precio y comisiones. Devuelve qué está mal, o null si está todo bien.
@@ -285,6 +294,19 @@ function assertPossibleDividend(ops: OperationRow[], div: OperationRow, ticker: 
   if (max <= 0) throw new HttpError(409, `No tenías ${ticker} en los 90 días anteriores al ${when}: no pudiste cobrar ese dividendo.`);
   if (div.quantity > max + 1e-9) {
     throw new HttpError(409, `El dividendo es por ${div.quantity} acciones, pero en los 90 días anteriores al ${when} tuviste como mucho ${max}.`);
+  }
+  // El monto: los dividendos del broker vienen como "1 × el total", y con cantidad 1 el control de arriba
+  // deja pasar cualquier monto. Ninguna empresa paga en un dividendo más de la mitad de lo que vale la
+  // acción (el mismo límite que se usa con los datos de Yahoo): con 7 GGAL que valían $35.000, un
+  // dividendo de $5.000.000 es un cero de más. Todo en la escala de hoy (precio guardado y cantidad ajustada).
+  const close = get<{ close: number }>('SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1', ticker, div.date)?.close;
+  const gross = div.quantity * div.price;
+  if (close && gross > max * close * MAX_DIVIDEND_SHARE) {
+    const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-AR')}`;
+    throw new HttpError(
+      409,
+      `El dividendo (${fmt(gross)}) es más de la mitad de lo que valían tus ${ticker} el ${when} (${fmt(max * close)}): revisá que no sobre un cero.`,
+    );
   }
 }
 
@@ -608,12 +630,20 @@ router.post('/import', async (req, res) => {
   const existingByTicker = new Map<string, OperationRow[]>();
   // Se compara contra lo cargado tal cual (sin ajustar por splits), igual que viene en el archivo
   for (const t of tickers) existingByTicker.set(t, getRawOperations(uid, t));
+  // Se cuentan: si ya hay 2 compras iguales cargadas (mismo día, cantidad y precio) y el archivo trae 3,
+  // 2 son duplicadas y 1 es nueva. Antes bastaba con que existiera una igual: la tercera se perdía.
+  const sameKey = (o: { type: string | null; date: string | null; quantity: number | null; price: number | null }) =>
+    `${o.type}|${o.date}|${o.quantity}|${Math.round((o.price ?? 0) * 1e6)}`;
+  const alreadyLoaded = new Map<string, number>();
+  for (const [t, ops] of existingByTicker) for (const o of ops) alreadyLoaded.set(`${t}|${sameKey(o)}`, (alreadyLoaded.get(`${t}|${sameKey(o)}`) ?? 0) + 1);
   for (const r of rows) {
     if (r.errors.length || !r.ticker || r.ignored) continue;
-    const dup = existingByTicker
-      .get(r.ticker)
-      ?.some((o) => o.type === r.type && o.date === r.date && Math.abs(o.quantity - r.quantity!) < 1e-9 && Math.abs(o.price - r.price!) < 1e-6);
-    if (dup) r.status = 'duplicada';
+    const key = `${r.ticker}|${sameKey(r)}`;
+    const left = alreadyLoaded.get(key) ?? 0;
+    if (left > 0) {
+      r.status = 'duplicada';
+      alreadyLoaded.set(key, left - 1);
+    }
   }
 
   // Ventas sin respaldo, por ticker
