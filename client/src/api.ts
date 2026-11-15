@@ -268,6 +268,8 @@ export interface JournalEntry {
   realized: number | null;
   /** Solo en compras: lo que vendiste de ese activo dentro del plazo del veredicto, y con qué resultado. */
   soldWithin: { quantity: number; realized: number } | null;
+  /** Qué hizo el mercado (S&P 500 o Merval, en dólares) en el mismo plazo del veredicto, y si la decisión le ganó. */
+  market: { label: string; change: number; relative: number; beat: boolean } | null;
 }
 
 export interface JournalStats {
@@ -283,6 +285,8 @@ export interface JournalStats {
 export interface Journal {
   currency: Currency;
   entries: JournalEntry[];
+  /** En cuántas decisiones ya evaluadas elegiste mejor que quedarte en el mercado. */
+  vsMarket: { compared: number; beat: number };
   stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
   /** Qué pasó, en plata, con todo lo que vendiste. */
   sold: { count: number; missedCount: number; missed: number; savedCount: number; saved: number; net: number };

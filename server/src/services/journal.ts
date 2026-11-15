@@ -16,7 +16,15 @@
 // Los cambios de precio se miden SIEMPRE en dólares, aunque estés viendo la app en pesos:
 // con inflación, casi cualquier precio en pesos sube más de 2% en 90 días, y entonces
 // casi todas las compras parecerían aciertos y casi todas las ventas, errores.
+//
+// Contra el mercado: que el precio suba no prueba que elegiste bien si en esos mismos días subió todo.
+// Por eso, junto al veredicto, se muestra qué hizo el mercado en el mismo plazo (S&P 500 para
+// CEDEARs, Merval para acciones, también en dólares) y si la decisión le ganó.
+// Ejemplo: compro y a los 90 días el activo subió 5%, pero el S&P 500 subió 10%. El veredicto dice
+// acierto (subió), pero contra el mercado perdió: 1,05 / 1,10 − 1 = −4,5%. Con una venta es al revés:
+// le ganó al mercado si, después de vender, el activo anduvo peor que el mercado.
 import { all } from '../db.ts';
+import { loadIndex } from './history.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { DateSeries, computePosition, getOperations, loadFx, makeConverter, sortOps, type Currency, type OperationRow } from './portfolio.ts';
 
@@ -25,6 +33,9 @@ const MAIN_HORIZON = 90;
 const NEUTRAL_BAND = 0.02;
 
 export type Verdict = 'ACIERTO' | 'ERROR' | 'NEUTRAL';
+
+/** Contra qué mercado se compara cada tipo de activo. */
+const MARKET = { CEDEAR: { series: 'spy', label: 'S&P 500' }, ACCION: { series: 'merval', label: 'Merval' } } as const;
 
 function addDaysIso(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -68,8 +79,23 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     return s;
   };
 
+  // Qué hizo el mercado en el mismo plazo que decide el veredicto. Sin datos del índice en las dos
+  // fechas (el Merval de Yahoo está congelado desde octubre de 2026), no se compara.
+  const marketOf = (assetType: 'ACCION' | 'CEDEAR', type: 'COMPRA' | 'VENTA', date: string, main: { days: number; change: number } | null) => {
+    const idx = markets[assetType];
+    if (!main || idx.empty) return null;
+    const target = addDaysIso(date, main.days);
+    if (!idx.covers(date) || target > idx.dates[idx.dates.length - 1]) return null;
+    const change = judgeConv(idx.at(target), target) / judgeConv(idx.at(date), date) - 1;
+    // Cuánto mejor (+) o peor (−) anduvo el activo que el mercado
+    const relative = (1 + main.change) / (1 + change) - 1;
+    return { label: MARKET[assetType].label, change, relative, beat: type === 'COMPRA' ? relative > 0 : relative < 0 };
+  };
+  const markets = { CEDEAR: loadIndex(MARKET.CEDEAR.series), ACCION: loadIndex(MARKET.ACCION.series) };
+
   const entries = ops
     .map((op) => {
+      const assetType = assetTypes.get(op.ticker) ?? 'CEDEAR';
       const s = pricesOf(op.ticker);
       const lastDate = s.empty ? '' : s.dates[s.dates.length - 1];
       const base = conv(op.price, op.date);
@@ -117,7 +143,8 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
       return {
         id: op.id,
         ticker: op.ticker,
-        assetType: assetTypes.get(op.ticker) ?? 'CEDEAR',
+        assetType,
+        market: marketOf(assetType, type, op.date, main && main.available ? main : null),
         // En una venta: lo que ganaste o perdiste con ella, contra tu precio promedio
         realized: type === 'VENTA' ? (realizedByOp.get(op.id) ?? null) : null,
         soldWithin,
@@ -183,9 +210,14 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     winRate: wins.length + losses.length > 0 ? wins.length / (wins.length + losses.length) : null,
   };
 
+  // Contra el mercado: en cuántas decisiones ya evaluadas elegiste mejor que quedarte en el índice
+  const compared = entries.filter((e) => e.market);
+  const vsMarket = { compared: compared.length, beat: compared.filter((e) => e.market!.beat).length };
+
   return {
     currency,
     entries,
+    vsMarket,
     sold,
     closed,
     stats: {
@@ -215,6 +247,7 @@ export function decisionOf(entry: ReturnType<typeof buildJournal>['entries'][num
     sinceChange: entry.sinceChange,
     missed: entry.missed,
     soldWithin: entry.soldWithin,
+    market: entry.market,
     // Ya pasó el plazo, pero no hay precios guardados de esa época para juzgarla
     noData: !entry.verdict && entry.horizons.some((h) => !h.available && 'noData' in h),
   };

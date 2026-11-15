@@ -5,7 +5,7 @@ import { useJournal } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict, lacksPrices } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, marketText } from '../components/Verdict';
 import { Patterns, SoldSummary, WinsSummary, soldWithinText } from '../components/Balance';
 
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
@@ -59,6 +59,21 @@ export function JournalPage() {
         <StatCard label="Con justificación" stats={s.withNote} sub={s.withoutNote.hitRate != null ? `sin: ${pct(s.withoutNote.hitRate).replace('+', '')}` : undefined} />
       </section>
 
+      {data.vsMarket.compared > 0 && (
+        <section className="rounded-xl bg-panel p-5 text-sm leading-relaxed">
+          <h2 className="mb-1 font-medium">Contra el mercado</h2>
+          <p>
+            En <span className="tabular font-medium">{data.vsMarket.beat} de {data.vsMarket.compared}</span> decisiones elegiste mejor que el
+            mercado en el mismo plazo ({pct(data.vsMarket.beat / data.vsMarket.compared).replace('+', '')}).
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            Que un precio suba no prueba que elegiste bien si en esos días subió todo. Por eso cada decisión se compara también con el S&amp;P
+            500 (CEDEARs) o el Merval (acciones), en dólares. Ejemplo: compraste y subió 5%, pero el S&amp;P 500 subió 10%: es acierto, pero
+            te habría ido mejor en el índice. Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice.
+          </p>
+        </section>
+      )}
+
       <Patterns journal={data} />
       <WinsSummary journal={data} />
       <SoldSummary journal={data} />
@@ -95,6 +110,9 @@ export function JournalPage() {
               </div>
               {e.note_title && <p className="text-sm">“{e.note_title}”</p>}
               <p className="text-xs text-muted">{explainVerdict(e)}</p>
+              {marketText(e) && (
+                <p className={`text-xs ${e.market!.beat ? 'text-up' : 'text-down'}`}>{marketText(e)}</p>
+              )}
               {soldWithinText(e, currency) && <p className="tabular text-xs">{soldWithinText(e, currency)}</p>}
               {e.missed != null && Math.abs(e.missed) >= 0.005 && (
                 <p className="tabular text-xs text-muted">

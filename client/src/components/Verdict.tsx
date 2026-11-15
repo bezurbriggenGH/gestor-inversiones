@@ -42,6 +42,23 @@ export function HorizonList({ entry }: { entry: JournalEntry }) {
   );
 }
 
+/** "El S&P 500 subió 10% en esos 90 días: tu compra anduvo 4,5% peor que el mercado." */
+export function marketText(e: JournalEntry): string | null {
+  const m = e.market;
+  if (!m || e.verdictDays == null) return null;
+  const moved = `${m.change >= 0 ? 'subió' : 'bajó'} ${pct(Math.abs(m.change)).replace('+', '')}`;
+  const diff = pct(Math.abs(m.relative)).replace('+', '');
+  const how =
+    e.type === 'COMPRA'
+      ? m.beat
+        ? `tu compra le ganó al mercado por ${diff}`
+        : `tu compra anduvo ${diff} peor que el mercado`
+      : m.beat
+        ? `lo que vendiste anduvo ${diff} peor que el mercado: salir no te costó`
+        : `lo que vendiste le ganó al mercado por ${diff}`;
+  return `El ${m.label} ${moved} en esos ${e.verdictDays} días: ${how}.`;
+}
+
 /** Ya pasó el plazo para evaluarla, pero no hay precios guardados de esa época. */
 export const lacksPrices = (e: JournalEntry) => !e.verdict && e.horizons.some((h) => !h.available && h.noData);
 

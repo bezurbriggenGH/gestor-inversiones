@@ -85,3 +85,42 @@ describe('Lo que se marca en el gráfico de un activo', () => {
     assert.equal(d.noData, true);
   });
 });
+
+describe('Diario de decisiones: contra el mercado', () => {
+  // Dólar fijo en $1.000 para que las cuentas salgan a mano. En 90 días el CEDEAR sube 5% y el S&P 500 sube 10%.
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (3, 'Mercado', 'mercado@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('CED', 'CED.BA', 'Cedear de prueba', 'CEDEAR')");
+  for (const [date, px, spy] of [
+    ['2025-07-01', 1000, 2000],
+    ['2025-09-29', 1050, 2200],
+  ] as const) {
+    run("INSERT INTO prices (ticker, date, close) VALUES ('CED', ?, ?)", date, px);
+    run("INSERT INTO index_values (series, date, value) VALUES ('spy', ?, ?)", date, spy);
+    run("INSERT OR IGNORE INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, 1000)", date);
+  }
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (3, 'CED', 'COMPRA', '2025-07-01', 10, 1000)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (3, 'CED', 'VENTA', '2025-07-01', 5, 1000)");
+
+  test('una compra que subió 5% es acierto, pero contra un mercado que subió 10% perdió 4,5%', () => {
+    const j = buildJournal(3, 'ARS', 'bolsa');
+    const compra = j.entries.find((e) => e.type === 'COMPRA')!;
+    assert.equal(compra.verdict, 'ACIERTO');
+    assert.equal(compra.market!.label, 'S&P 500');
+    assert.ok(near(compra.market!.change, 0.1));
+    assert.ok(near(compra.market!.relative, 1.05 / 1.1 - 1)); // −4,5%
+    assert.equal(compra.market!.beat, false);
+  });
+
+  test('una venta antes de que el activo ande peor que el mercado le gana al mercado', () => {
+    const j = buildJournal(3, 'ARS', 'bolsa');
+    const venta = j.entries.find((e) => e.type === 'VENTA')!;
+    assert.equal(venta.verdict, 'ERROR'); // el precio subió después de vender
+    assert.equal(venta.market!.beat, true); // pero el mercado subió más: salir no fue peor que el índice
+    assert.deepEqual(j.vsMarket, { compared: 2, beat: 1 });
+  });
+
+  test('sin datos del índice en esas fechas no se compara (las acciones contra un Merval vacío)', () => {
+    const [entry] = buildJournal(1, 'ARS', 'bolsa').entries;
+    assert.equal(entry.market, null);
+  });
+});
