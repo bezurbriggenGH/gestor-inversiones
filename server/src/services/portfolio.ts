@@ -11,7 +11,7 @@
 import { all, get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { FX_KINDS } from '../providers/dolar.ts';
-import { HttpError } from '../util.ts';
+import { HttpError, addDays } from '../util.ts';
 import { buildCedearInfo, cedearGap } from './cedear.ts';
 import { CEDEAR_RATIOS, usSymbolOf } from '../cedears.ts';
 import { classifyAsset, groupBy } from './exposure.ts';
@@ -390,6 +390,11 @@ export function adjustForSplits<T extends Pick<OperationRow, 'ticker' | 'date' |
   });
 }
 
+// Un cobro cargado hasta 15 días después del split, por un monto que difiere menos de 30% del valor de la
+// fracción, se toma como el pago de esa fracción
+const FRACTION_PAYMENT_DAYS = 15;
+const FRACTION_MATCH = 0.3;
+
 /**
  * Fracciones que deja un split o un dividendo en acciones.
  * El broker solo acredita acciones enteras y la fracción la paga en efectivo: con 10 acciones y un
@@ -427,6 +432,19 @@ export function withSplitFractions(ops: OperationRow[]): OperationRow[] {
       );
       const quantity = fraction * later;
       held -= quantity;
+      const value = quantity * (price?.close ?? 0);
+      // Si el broker ya acreditó esa fracción y la cargaste (o la importaste) como un cobro de esos días,
+      // la plata ya está contada ahí: la fracción sale de la tenencia sin cobrar nada de nuevo. Si no, la
+      // misma plata entraba dos veces. Ejemplo: COME, 13/08/2025, 0,8158 acciones × $60,90 = $49,68; el
+      // 14/08 hay un cobro de $49,74.
+      const paid = mine.find(
+        (o) =>
+          o.type === 'DIVIDENDO' &&
+          o.date >= split.date &&
+          o.date <= addDays(split.date, FRACTION_PAYMENT_DAYS).toISOString().slice(0, 10) &&
+          value > 0 &&
+          Math.abs((o.quantity * o.price) / value - 1) <= FRACTION_MATCH,
+      );
       out.push({
         id: nextId--,
         user_id: mine[0].user_id,
@@ -434,9 +452,9 @@ export function withSplitFractions(ops: OperationRow[]): OperationRow[] {
         type: 'VENTA',
         date: split.date,
         quantity,
-        price: price?.close ?? 0,
+        price: paid ? 0 : (price?.close ?? 0),
         fees: 0,
-        note_title: null,
+        note_title: paid ? `Cobrada aparte: el ${paid.date.split('-').reverse().join('/')}` : null,
         note_body: null,
         note_link: null,
         created_at: '',

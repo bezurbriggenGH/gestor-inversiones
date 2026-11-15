@@ -105,8 +105,20 @@ export function OperationHistory({ operations, currency }: { operations: Operati
                   >
                     <span className="flex min-w-0 items-center gap-2.5">
                       <span className={`h-3 w-3 shrink-0 rounded-full ${DOT[op.type]}`} />
-                      <span>{op.auto ? 'Fracción cobrada' : LABEL[op.type]}</span>
-                      {(op.note_title || op.note_body) && (
+                      <span>{op.auto ? (op.price === 0 ? 'Fracción (cobrada aparte)' : 'Fracción cobrada') : LABEL[op.type]}</span>
+                      {/* La cantidad y el precio de la fila están en la escala de hoy, no como se cargaron */}
+                      {!op.auto && op.splitFactor != null && op.splitFactor !== 1 && op.type !== 'DIVIDENDO' && (
+                        <span
+                          className="rounded bg-bg px-1.5 py-0.5 text-[10px] text-muted"
+                          title={`Ajustada por un split posterior: la cargaste como ${num(op.quantity / op.splitFactor)} a ${money(
+                            op.price * op.splitFactor,
+                            'ARS',
+                          )}. El monto total no cambia.`}
+                        >
+                          ajustada por split
+                        </span>
+                      )}
+                      {!op.auto && (op.note_title || op.note_body) && (
                         <span className="text-xs text-muted" title={op.note_title ?? 'Tiene una justificación'}>
                           ✎
                         </span>

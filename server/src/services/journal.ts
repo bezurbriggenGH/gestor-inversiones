@@ -73,6 +73,18 @@ export function realDifference(a: { hits: number; judged: number }, b: { hits: n
 }
 
 /**
+ * Margen de error de un porcentaje (95% de confianza): cuánto puede moverse solo por suerte con esa
+ * cantidad de casos. Es 1,96 × √(p × (1 − p) ÷ n). Ejemplo: 96 de 215 (44,65%) → 1,96 × √(0,4465 × 0,5535
+ * ÷ 215) = 6,6 puntos: el porcentaje "de verdad" puede estar entre 38% y 51%.
+ * No se compara contra 50%: elegir al azar no da 50% (ver la explicación de "Contra el mercado").
+ */
+export function marginOfError(hits: number, n: number): number | null {
+  if (n < MIN_JUDGED) return null;
+  const p = hits / n;
+  return 1.96 * Math.sqrt((p * (1 - p)) / n);
+}
+
+/**
  * El Diario hace 3 comparaciones a la vez (compras/ventas, acciones/CEDEARs, con/sin justificación).
  * Con 95% de confianza en cada una, la chance de que alguna "salte" por casualidad ronda el 14%.
  * Por eso a cada una se le pide 95% ÷ 3 de error como máximo (corrección de Bonferroni): 2,39 en vez de 1,96.
@@ -267,6 +279,7 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
       neutral: list.filter((e) => final(e) && e.verdict === 'NEUTRAL').length,
       pending: list.filter((e) => !final(e)).length,
       hitRate: judged.length ? hits / judged.length : null,
+      margin: marginOfError(hits, judged.length),
     };
   };
   // Para comparar dos grupos sin que un solo activo decida (ver robustDifference)
@@ -312,9 +325,11 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     const list = compared.filter((e) => e.type === type);
     return { compared: list.length, beat: list.filter((e) => e.market!.beat).length };
   };
+  const beatCount = compared.filter((e) => e.market!.beat).length;
   const vsMarket = {
     compared: compared.length,
-    beat: compared.filter((e) => e.market!.beat).length,
+    beat: beatCount,
+    margin: marginOfError(beatCount, compared.length),
     even: withMarket.length - compared.length,
     buys: split('COMPRA'),
     sells: split('VENTA'),

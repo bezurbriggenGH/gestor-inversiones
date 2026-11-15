@@ -12,6 +12,9 @@ import { Patterns, WinsSummary, soldWithinText } from '../components/Balance';
 const MIN_JUDGED = 10;
 const PAGE = 20;
 
+/** Un margen de error en puntos: 0,066 → "6,6 puntos" */
+const points = (m: number) => `${(m * 100).toFixed(1).replace('.', ',')} puntos`;
+
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
   const few = stats.judged < MIN_JUDGED;
   return (
@@ -23,7 +26,7 @@ function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; s
           ? 'sin decisiones evaluadas'
           : few
             ? `solo ${stats.judged} evaluadas: muy pocas para un porcentaje`
-            : `${stats.hits} aciertos de ${stats.judged}`}
+            : `${stats.hits} aciertos de ${stats.judged}${stats.margin != null ? ` · ± ${points(stats.margin)}` : ''}`}
         {sub ? ` · ${sub}` : ''}
       </p>
     </div>
@@ -68,6 +71,14 @@ export function JournalPage() {
             <p className="text-sm">
               En <span className="tabular font-medium">{m.beat} de {m.compared}</span> decisiones elegiste mejor que el mercado en el mismo plazo.
               {m.even > 0 && <span className="text-muted"> Otras {m.even} quedaron a menos de 2% del mercado: empates, no cuentan.</span>}
+              {/* Con esta cantidad de decisiones, el porcentaje puede moverse por suerte: se dice cuánto */}
+              {m.margin != null && (
+                <span className="text-muted">
+                  {' '}
+                  Con esta cantidad de decisiones, el porcentaje tiene un margen de error de ± {points(m.margin)} (puede estar entre{' '}
+                  {pct(Math.max(0, m.beat / m.compared - m.margin), 0).replace('+', '')} y {pct(Math.min(1, m.beat / m.compared + m.margin), 0).replace('+', '')}).
+                </span>
+              )}
               {m.compared < MIN_JUDGED && <span className="text-muted"> Son muy pocas todavía para sacar conclusiones.</span>}
             </p>
             {/* Compras y ventas por separado: no se miden con la misma vara (ver la explicación de abajo) */}

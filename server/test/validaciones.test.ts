@@ -114,19 +114,19 @@ describe('Fechas', () => {
 
 describe('Ventas', () => {
   test('no se puede vender más de lo que se tiene', async () => {
-    const r = await add({ type: 'VENTA', date: '2025-03-01', quantity: 11 });
+    const r = await add({ type: 'VENTA', date: '2025-03-03', quantity: 11 });
     assert.equal(r.status, 409);
     assert.match(r.error!, /había 10/);
   });
 
   test('no se puede vender antes de haber comprado', async () => {
-    const r = await add({ type: 'VENTA', date: '2024-12-01', quantity: 1 });
+    const r = await add({ type: 'VENTA', date: '2024-12-02', quantity: 1 });
     assert.equal(r.status, 409);
     assert.match(r.error!, /no hay compras anteriores/);
   });
 
   test('una venta posible se guarda', async () => {
-    assert.equal((await add({ type: 'VENTA', date: '2025-03-01', quantity: 4, price: 120 })).status, 201); // quedan 6
+    assert.equal((await add({ type: 'VENTA', date: '2025-03-03', quantity: 4, price: 120 })).status, 201); // quedan 6
   });
 
   test('no se puede borrar una compra si una venta quedaría sin respaldo', async () => {
@@ -152,7 +152,7 @@ describe('Dividendos', () => {
   });
 
   test('sí si vendiste después de la fecha de corte (se mira lo que tuviste en los 90 días anteriores)', async () => {
-    // El 01/03 vendí 4 y me quedaron 6, pero el dividendo del 10/03 puede ser por las 10 que tenía antes
+    // El 03/03 vendí 4 y me quedaron 6, pero el dividendo del 10/03 puede ser por las 10 que tenía antes
     assert.equal((await add({ type: 'DIVIDENDO', date: '2025-03-10', quantity: 10, price: 2 })).status, 201);
   });
 
@@ -427,5 +427,23 @@ describe('Números raros y precios con un cero de más', () => {
   test('importado, también', async () => {
     const r = await call('POST', '/import', { csv: 'Fecha;Tipo;Ticker;Cantidad;Precio;Comision\n02/01/2025;Compra;AAA;1;100000;0', commit: false });
     assert.match(r.body.rows[0].errors.join(), /más de 10 veces del cierre/);
+  });
+});
+
+describe('Días sin rueda', () => {
+  test('una compra o venta en sábado o domingo se rechaza (BYMA no opera)', async () => {
+    const r = await add({ date: '2025-01-04' }); // sábado
+    assert.equal(r.status, 400);
+    assert.match(r.error!, /fin de semana/);
+    assert.equal((await add({ type: 'VENTA', date: '2025-01-05', quantity: 1 })).status, 400); // domingo
+  });
+
+  test('un dividendo sí puede acreditarse un fin de semana', async () => {
+    const r = await add({ type: 'DIVIDENDO', date: '2025-03-08', quantity: 1, price: 2 }); // sábado
+    assert.notEqual(r.status, 400, r.error ?? '');
+  });
+
+  test('una alerta con precio "1e5" se rechaza, igual que en las operaciones', async () => {
+    assert.equal((await call('POST', '/alerts', { ticker: 'AAA', direction: 'ABAJO', price: '1e5' })).status, 400);
   });
 });

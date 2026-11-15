@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { DateSeries, computePosition, convertOp } from '../src/services/portfolio.ts';
-import { buildJournal, decisionOf, realDifference, robustDifference, type JudgedDecision } from '../src/services/journal.ts';
+import { buildJournal, decisionOf, marginOfError, realDifference, robustDifference, type JudgedDecision } from '../src/services/journal.ts';
 
 describe('Resultado de cada venta', () => {
   test('el % se calcula sobre lo que habían costado las acciones vendidas', () => {
@@ -119,7 +119,7 @@ describe('Diario de decisiones: contra el mercado', () => {
     assert.equal(venta.verdict, 'ERROR'); // el precio subió después de vender
     assert.equal(venta.market!.beat, true); // pero el mercado subió más: salir no fue peor que el índice
     // Compras y ventas, por separado
-    assert.deepEqual(j.vsMarket, { compared: 1, beat: 1, even: 0, buys: { compared: 0, beat: 0 }, sells: { compared: 1, beat: 1 } });
+    assert.deepEqual(j.vsMarket, { compared: 1, beat: 1, margin: null, even: 0, buys: { compared: 0, beat: 0 }, sells: { compared: 1, beat: 1 } });
     assert.deepEqual(buildJournal(3, 'ARS', 'bolsa').vsMarket.buys, { compared: 1, beat: 0 });
   });
 
@@ -140,7 +140,7 @@ describe('Diario de decisiones: contra el mercado', () => {
     assert.equal(j.entries[0].verdict, 'ACIERTO'); // subió 9%
     assert.ok(near(j.entries[0].market!.relative, 1.09 / 1.1 - 1));
     assert.equal(j.entries[0].market!.beat, null);
-    assert.deepEqual(j.vsMarket, { compared: 0, beat: 0, even: 1, buys: { compared: 0, beat: 0 }, sells: { compared: 0, beat: 0 } });
+    assert.deepEqual(j.vsMarket, { compared: 0, beat: 0, margin: null, even: 1, buys: { compared: 0, beat: 0 }, sells: { compared: 0, beat: 0 } });
   });
 
   test('sin datos del índice en esas fechas no se compara (las acciones contra un Merval vacío)', () => {
@@ -259,5 +259,21 @@ describe('Comprar y vender lo mismo el mismo día', () => {
     const enero = buildJournal(7, 'ARS', 'bolsa').entries.filter((e) => e.date === '2026-01-02');
     assert.ok(near(enero.find((e) => e.type === 'COMPRA')!.offset, 0.4));
     assert.equal(enero.find((e) => e.type === 'VENTA')!.offset, 1);
+  });
+});
+
+describe('Margen de error de los porcentajes del Diario', () => {
+  test('96 de 215 (44,65%): más o menos 6,6 puntos, entre 38% y 51%', () => {
+    // 1,96 × √(0,4465 × 0,5535 ÷ 215) = 0,0664
+    assert.ok(near(marginOfError(96, 215)!, 1.96 * Math.sqrt((96 / 215) * (119 / 215) / 215)));
+    assert.ok(Math.abs(marginOfError(96, 215)! - 0.0664) < 0.0005);
+  });
+
+  test('con más decisiones el margen se achica: 960 de 2.150 → 2,1 puntos', () => {
+    assert.ok(Math.abs(marginOfError(960, 2150)! - 0.021) < 0.0005);
+  });
+
+  test('con menos de 10 decisiones no se da margen (el porcentaje tampoco se muestra)', () => {
+    assert.equal(marginOfError(3, 4), null);
   });
 });

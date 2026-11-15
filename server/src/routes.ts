@@ -345,6 +345,16 @@ export function priceProblem(ticker: string, type: OpType, date: string, price: 
   return `El precio (${fmt(price)}) está a más de 10 veces del cierre de ese día (${fmt(close)}): revisá que no sobre o falte un cero`;
 }
 
+/**
+ * Compras y ventas solo se hacen en días hábiles: BYMA no opera sábados ni domingos. Los dividendos sí
+ * pueden acreditarse un fin de semana. (Los feriados no se controlan: la app no tiene la lista.)
+ */
+export function weekendProblem(type: OpType, date: string): string | null {
+  if (type === 'DIVIDENDO') return null;
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return day === 0 || day === 6 ? 'Esa fecha cae en fin de semana y BYMA no opera: revisá que sea la del día de la operación' : null;
+}
+
 /** Fecha, cantidad, precio y comisiones de una operación, controlados igual al cargarla y al editarla. */
 function readAmounts(type: OpType, b: Record<string, unknown>, ticker: string) {
   const date = String(b.date ?? '');
@@ -355,7 +365,7 @@ function readAmounts(type: OpType, b: Record<string, unknown>, ticker: string) {
   const quantity = plainNumber(b.quantity);
   const price = plainNumber(b.price);
   const fees = b.fees === '' || b.fees == null ? 0 : plainNumber(b.fees);
-  const problem = amountsProblem(type, quantity, price, fees) ?? priceProblem(ticker, type, date, price);
+  const problem = weekendProblem(type, date) ?? amountsProblem(type, quantity, price, fees) ?? priceProblem(ticker, type, date, price);
   if (problem) throw new HttpError(400, problem);
   return { date, quantity, price, fees };
 }
@@ -567,7 +577,7 @@ router.post('/alerts', (req, res) => {
   const uid = userId(res);
   const ticker = requireUserAsset(uid, normalizeTicker(String(req.body?.ticker ?? ''))).ticker;
   const direction = req.body?.direction;
-  const price = Number(req.body?.price);
+  const price = plainNumber(req.body?.price); // "1e5" no es un precio que alguien escriba
   if (direction !== 'ARRIBA' && direction !== 'ABAJO') throw new HttpError(400, 'Dirección inválida');
   if (!(price > 0)) throw new HttpError(400, 'El precio debe ser mayor a 0');
   // "Infinity" también es mayor a 0: se guardaba vacío y la alerta se disparaba sola
@@ -649,7 +659,10 @@ router.post('/import', async (req, res) => {
     if (tooOld) r.errors.push(tooOld.charAt(0).toLowerCase() + tooOld.slice(1));
     // Las mismas reglas que al cargar a mano (después de pasar a pesos los dividendos en dólares)
     if (!r.ignored && !r.errors.length && r.type && r.quantity != null && r.price != null) {
-      const problem = amountsProblem(r.type, r.quantity, r.price, r.fees) ?? (r.ticker && r.date ? priceProblem(r.ticker, r.type, r.date, r.price) : null);
+      const problem =
+        (r.date ? weekendProblem(r.type, r.date) : null) ??
+        amountsProblem(r.type, r.quantity, r.price, r.fees) ??
+        (r.ticker && r.date ? priceProblem(r.ticker, r.type, r.date, r.price) : null);
       if (problem) r.errors.push(problem.charAt(0).toLowerCase() + problem.slice(1));
     }
   }

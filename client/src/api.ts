@@ -303,6 +303,8 @@ export interface JournalStats {
   neutral: number;
   pending: number;
   hitRate: number | null;
+  /** Margen de error del porcentaje, con 95% de confianza (null con menos de 10 decisiones) */
+  margin: number | null;
 }
 
 export interface Journal {
@@ -310,7 +312,7 @@ export interface Journal {
   entries: JournalEntry[];
   /** En cuántas decisiones ya evaluadas elegiste mejor que quedarte en el mercado. */
   /** Decisiones ya evaluadas a 90 días: cuántas le ganaron al mercado, de cuántas, y cuántas empataron (aparte). */
-  vsMarket: { compared: number; beat: number; even: number; buys: { compared: number; beat: number }; sells: { compared: number; beat: number } };
+  vsMarket: { compared: number; beat: number; margin: number | null; even: number; buys: { compared: number; beat: number }; sells: { compared: number; beat: number } };
   stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
   /**
    * Ventas con ganancia: en cuántas ganaste plata y cuánto (las del mismo activo y día cuentan como una).

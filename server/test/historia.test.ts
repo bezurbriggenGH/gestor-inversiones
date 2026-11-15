@@ -145,6 +145,26 @@ describe('Fracciones que deja un split (el broker solo acredita acciones enteras
     assert.ok(near(p.realized, -25));
   });
 
+  test('si el broker ya pagó la fracción y está cargada como cobro, no se cuenta dos veces', () => {
+    // La media acción a $50 son $25. Al día siguiente hay un cobro cargado de $25,10: es ese pago.
+    const ops = adjustOperations([op('COMPRA', '2025-01-02', 10, 225, 0, 'FRAC'), op('DIVIDENDO', '2025-01-11', 1, 25.1, 0, 'FRAC')]);
+    const fraccion = ops.find((o) => o.auto)!;
+    assert.ok(near(fraccion.quantity, 0.5)); // la media acción igual sale de la tenencia
+    assert.equal(fraccion.price, 0); // pero no se cobra de nuevo
+    assert.equal(fraccion.note_title, 'Cobrada aparte: el 11/01/2025');
+    const p = computePosition(ops, close('2025-02-01', 50), undefined, pesos).position;
+    assert.ok(near(p.quantity, 22));
+    // Total: la media acción costó $50 y se cobró $25,10 (en el cobro): −$24,90, no +$0,20 (contada dos veces)
+    assert.ok(near(p.realized + p.dividends, -24.9));
+  });
+
+  test('un cobro lejano o por otro monto no es el pago de la fracción', () => {
+    const lejos = adjustOperations([op('COMPRA', '2025-01-02', 10, 225, 0, 'FRAC'), op('DIVIDENDO', '2025-03-01', 1, 25, 0, 'FRAC')]);
+    assert.equal(lejos.find((o) => o.auto)!.price, 50);
+    const otroMonto = adjustOperations([op('COMPRA', '2025-01-02', 10, 225, 0, 'FRAC'), op('DIVIDENDO', '2025-01-11', 1, 300, 0, 'FRAC')]);
+    assert.equal(otroMonto.find((o) => o.auto)!.price, 50);
+  });
+
   test('con 2 CEDEARs, un dividendo del 1% en acciones no acredita ninguno: al vender 2 no queda nada', () => {
     const ops = adjustOperations([op('COMPRA', '2025-04-15', 2, 1010, 0, 'DIVA'), op('VENTA', '2025-07-21', 2, 1100, 0, 'DIVA')]);
     assert.doesNotThrow(() => assertNoShortSelling(ops));

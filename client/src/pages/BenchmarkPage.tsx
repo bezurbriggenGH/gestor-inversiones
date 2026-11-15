@@ -142,7 +142,14 @@ export function BenchmarkPage() {
                       {money(b.diff!, currency, true)}
                       {b.diffPct != null && <span className="ml-1 text-xs">({pct(b.diffPct)})</span>}
                     </td>
-                    <td className="px-5 py-3 text-right text-muted">{b.irr != null ? pct(b.irr) : '—'}</td>
+                    {/* En dólares, la "TIR de la inflación" se leería como inflación en dólares: es la de pesos, pasada a dólares */}
+                    {currency === 'USD' && b.key === 'inflacion' ? (
+                      <td className="px-5 py-3 text-right text-muted" title="Es la inflación argentina en pesos, pasada a dólares: no es una tasa en dólares">
+                        —
+                      </td>
+                    ) : (
+                      <td className="px-5 py-3 text-right text-muted">{b.irr != null ? pct(b.irr) : '—'}</td>
+                    )}
                   </>
                 ) : (
                   <td colSpan={3} className="px-5 py-3 text-right text-muted">
