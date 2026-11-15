@@ -136,7 +136,7 @@ export function AssetPage() {
           ←
         </Link>
         <div className="mr-auto min-w-0">
-          <h1 className="flex items-baseline gap-2 text-xl font-semibold">
+          <h1 className="flex items-baseline gap-2 text-2xl font-semibold tracking-tight">
             {asset.ticker}
             <span className="rounded bg-card px-1.5 py-0.5 text-[11px] font-normal text-muted">
               {asset.type === 'ACCION' ? 'Acción argentina' : 'CEDEAR'}

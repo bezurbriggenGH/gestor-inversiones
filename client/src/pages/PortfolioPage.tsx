@@ -14,7 +14,7 @@ function Evolution({ history }: { history: History }) {
   const { currency } = useSettings();
   const lines = useMemo<ChartLine[]>(
     () => [
-      { key: 'value', label: 'Valor de la cartera', color: '#7c6bb0', area: true, data: history.points.map((p) => ({ date: p.date, value: p.value })) },
+      { key: 'value', label: 'Valor de la cartera', color: '#9483c6', area: true, data: history.points.map((p) => ({ date: p.date, value: p.value })) },
       { key: 'invested', label: 'Plata puesta (neta)', color: '#8a8a8f', dashed: true, data: history.points.map((p) => ({ date: p.date, value: p.netInvested })) },
     ],
     [history],
@@ -217,6 +217,7 @@ export function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <h1 className="-mb-2 text-2xl font-semibold tracking-tight">Mis inversiones</h1>
       {data.updating && (
         <p className="rounded-lg bg-panel px-3 py-2 text-xs text-muted">
           Actualizando precios… Mientras tanto ves los últimos guardados; se completan solos en unos segundos.

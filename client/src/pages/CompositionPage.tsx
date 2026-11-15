@@ -9,7 +9,7 @@ import { Button, ErrorBox, Loading } from '../components/ui';
 import { PortfolioTreemap } from '../components/PortfolioTreemap';
 
 // Un color por tipo de activo (no uno por activo: con muchos activos los colores se repetían)
-const TYPE_COLOR = { ACCION: '#5a9bb0', CEDEAR: '#7c6bb0' } as const;
+const TYPE_COLOR = { ACCION: '#5a9bb0', CEDEAR: '#9483c6' } as const;
 const UNCLASSIFIED = 'Sin clasificar';
 
 /** Barras de cuánto pesa cada sector o país, con los activos de cada uno. */
@@ -62,7 +62,7 @@ export function CompositionPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold">Composición</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Composición</h1>
 
       <ReviewBox review={data.review} />
 
@@ -208,7 +208,7 @@ function TargetBox({ target, currency, warnings }: { target: Rebalance | null; c
             step={5}
             value={value}
             onChange={(e) => setValue(Number(e.target.value))}
-            className="flex-1 accent-[#7c6bb0]"
+            className="flex-1 accent-[#9483c6]"
             aria-label="Porcentaje en CEDEARs"
           />
           <span className="tabular w-52 text-right">

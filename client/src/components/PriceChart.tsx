@@ -36,8 +36,8 @@ const MAS = [
 type MaKey = (typeof MAS)[number]['key'];
 
 const UP = '#4f9d69';
-const DOWN = '#c25450';
-const ACCENT = '#7c6bb0';
+const DOWN = '#da6a64';
+const ACCENT = '#9483c6';
 const GREY = '#8a8a8f';
 
 /** Color de la marca: cómo salió la decisión según el Diario (no si fue compra o venta: eso lo dice la flecha). */
@@ -357,7 +357,7 @@ export function PriceChart({
     <div className="rounded-xl bg-panel p-4">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="tabular text-2xl font-semibold">{money(shown.close, currency)}</p>
+          <p className="tabular text-xl font-semibold">{money(shown.close, currency)}</p>
           <p className="tabular text-xs text-muted">
             {fmtDate(shown.date)} ·{' '}
             <span className={tone(periodChange)}>

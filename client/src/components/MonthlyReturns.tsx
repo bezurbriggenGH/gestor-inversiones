@@ -1,6 +1,7 @@
 import type { History } from '../api';
 import { useSettings } from '../settings';
 import { money, pct } from '../format';
+import { Explain } from './ui';
 
 const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const FULL_SCALE = 0.15; // a partir de ±15% el color llega a su máxima intensidad
@@ -104,23 +105,28 @@ export function MonthlyReturns({ months, unpriced = [] }: { months: History['mon
 
       <p className="mt-2 text-xs text-muted">
         Rendimiento de la cartera en cada mes, en {currency === 'ARS' ? 'pesos' : 'dólares'}, sin contar la plata que agregaste o sacaste
-        (así un mes con muchas compras no parece un mes de ganancias).
-        {real && ' Se descuenta la inflación de ese mes (IPC): con 4% de inflación, un mes de +4% en pesos es quedarse igual.'} Pasá el mouse
-        por un mes para ver el detalle.
+        {real && ', descontada la inflación'}.{late.length > 0 && ' Los meses con * suman movimientos de meses anteriores: está explicado en "¿Cómo se calcula?".'}
       </p>
-      {late.length > 0 && (
-        <p className="mt-1 text-xs text-muted">
-          * {late.map((u) => `${u.ticker} (desde el ${fmt(u.until!)})`).join(', ')}: no hay precios guardados de antes de esa fecha. Hasta
-          entonces se valúan a tu último precio de compra o venta, y toda la suba o baja de ese tiempo cae ese día. El total está bien; lo que
-          puede estar corrido es el mes en que cae.
+      <Explain className="mt-2">
+        <p>
+          Sin contar la plata que agregaste o sacaste, un mes con muchas compras no parece un mes de ganancias.
+          {real && ' Se descuenta la inflación de ese mes (IPC): con 4% de inflación, un mes de +4% en pesos es quedarse igual.'} Pasá el
+          mouse por un mes para ver el detalle.
         </p>
-      )}
-      <p className="mt-1 text-xs text-muted">
-        ¿Por qué el año de acá no coincide con el rendimiento por año de arriba? Miden cosas distintas, y las dos están bien. Arriba (la TIR)
-        se mide tu plata: pesan más los meses en que tenías más puesto. Acá cada mes pesa igual, tengas mucho o poco: mide qué tan buenas
-        fueron tus elecciones. Si pusiste mucha plata justo antes de meses malos, arriba da menos que acá; si la pusiste antes de meses
-        buenos, arriba da más.
-      </p>
+        {late.length > 0 && (
+          <p>
+            * {late.map((u) => `${u.ticker} (desde el ${fmt(u.until!)})`).join(', ')}: no hay precios guardados de antes de esa fecha. Hasta
+            entonces se valúan a tu último precio de compra o venta, y toda la suba o baja de ese tiempo cae ese día. El total está bien; lo
+            que puede estar corrido es el mes en que cae.
+          </p>
+        )}
+        <p>
+          ¿Por qué el año de acá no coincide con el rendimiento por año de arriba? Miden cosas distintas, y las dos están bien. Arriba (la
+          TIR) se mide tu plata: pesan más los meses en que tenías más puesto. Acá cada mes pesa igual, tengas mucho o poco: mide qué tan
+          buenas fueron tus elecciones. Si pusiste mucha plata justo antes de meses malos, arriba da menos que acá; si la pusiste antes de
+          meses buenos, arriba da más.
+        </p>
+      </Explain>
     </section>
   );
 }

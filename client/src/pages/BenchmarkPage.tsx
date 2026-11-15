@@ -3,7 +3,7 @@ import type { BenchmarkKey } from '../api';
 import { useHistory } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, pct, tone } from '../format';
-import { ErrorBox, Loading } from '../components/ui';
+import { ErrorBox, Explain, Loading } from '../components/ui';
 import { LineChart, type ChartLine } from '../components/LineChart';
 import { CostsSection, HoldSection } from '../components/Balance';
 
@@ -23,7 +23,7 @@ export function BenchmarkPage() {
   const lines = useMemo<ChartLine[]>(() => {
     if (!data) return [];
     const out: ChartLine[] = [
-      { key: 'cartera', label: 'Tu cartera', color: '#7c6bb0', area: true, data: data.points.map((p) => ({ date: p.date, value: p.value })) },
+      { key: 'cartera', label: 'Tu cartera', color: '#9483c6', area: true, data: data.points.map((p) => ({ date: p.date, value: p.value })) },
     ];
     for (const b of data.benchmarks) {
       if (!b.available || hidden.has(b.key)) continue;
@@ -43,7 +43,7 @@ export function BenchmarkPage() {
   if (!data.portfolio || data.points.length < 2) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">Comparativa</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Comparativa</h1>
         <p className="text-muted">Registrá al menos una compra para comparar tu cartera contra la inflación, el dólar y el plazo fijo.</p>
       </div>
     );
@@ -63,7 +63,7 @@ export function BenchmarkPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Comparativa</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Comparativa</h1>
         <p className="mt-1 text-sm text-muted">
           Simulamos que la misma plata, en las mismas fechas en que compraste y vendiste, se hubiera ido a cada alternativa.
         </p>
@@ -157,12 +157,23 @@ export function BenchmarkPage() {
         </table>
       </section>
 
-      <p className="text-xs text-muted">
-        Lo que sacaste con ventas y dividendos se descuenta igual en todas las alternativas, así que "Hoy tendrías" compara solo
-        lo que sigue invertido. Inflación: IPC del INDEC, repartido parejo dentro de cada mes (el mes que todavía no se publicó se estima con el último dato). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
-        índice y del CEDEAR SPY, sin dividendos (tu cartera sí los cuenta, así que contra esos dos la comparación te favorece un poco).
-        A cada alternativa le llega toda la plata que pusiste, comisiones incluidas, y no paga comisiones (eso te juega en contra). Fuentes: ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
-      </p>
+      <div className="-mt-3 flex flex-col gap-1">
+        <p className="text-xs text-muted">
+          Lo que sacaste con ventas y dividendos se descuenta igual en todas las alternativas, así que "Hoy tendrías" compara solo lo que
+          sigue invertido.
+        </p>
+        <Explain label="¿De dónde salen los datos?">
+          <p>
+            Inflación: IPC del INDEC, repartido parejo dentro de cada mes (el mes que todavía no se publicó se estima con el último dato).
+            Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del índice y del CEDEAR SPY, sin
+            dividendos (tu cartera sí los cuenta, así que contra esos dos la comparación te favorece un poco).
+          </p>
+          <p>
+            A cada alternativa le llega toda la plata que pusiste, comisiones incluidas, y no paga comisiones (eso te juega en contra). Fuentes:
+            ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
+          </p>
+        </Explain>
+      </div>
 
       {/* La otra comparación: contra vos mismo, si te hubieras quedado quieto */}
       <HoldSection />

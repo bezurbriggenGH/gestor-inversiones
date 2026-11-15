@@ -27,7 +27,7 @@ export function CedearPanel({ ticker, info }: { ticker: string; info: CedearInfo
     () =>
       info.status === 'OK'
         ? [
-            { key: 'implied', label: `CCL implícito de ${ticker}`, color: '#7c6bb0', data: info.history.map((p) => ({ date: p.date, value: p.impliedCcl })) },
+            { key: 'implied', label: `CCL implícito de ${ticker}`, color: '#9483c6', data: info.history.map((p) => ({ date: p.date, value: p.impliedCcl })) },
             { key: 'ccl', label: 'CCL del mercado', color: '#8a8a8f', dashed: true, data: info.history.map((p) => ({ date: p.date, value: p.ccl })) },
           ]
         : [],

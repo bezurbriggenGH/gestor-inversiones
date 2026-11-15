@@ -66,7 +66,7 @@ export function ImportPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Importar operaciones</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Importar operaciones</h1>
         <p className="mt-1 text-sm text-muted">
           Subí el Excel (.xlsx o .xls) o CSV que exporta tu broker. Bull Market: descargá la <b>Cuenta Corriente</b> y subila tal cual. InvertirOnline: descargá los <b>Movimientos históricos</b> y subilos tal cual. Reconocemos columnas como <b>Fecha</b>, <b>Tipo/Operación</b>,{' '}
           <b>Ticker/Especie</b>, <b>Cantidad</b>, <b>Precio</b> y <b>Comisión</b>, con números en formato argentino (1.234,56) o con punto.

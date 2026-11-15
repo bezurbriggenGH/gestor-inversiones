@@ -4,12 +4,13 @@ import type { JournalStats, Verdict } from '../api';
 import { useJournal } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
-import { ErrorBox, Loading } from '../components/ui';
+import { Button, ErrorBox, Explain, Loading } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
 import { Patterns, WinsSummary, soldWithinText } from '../components/Balance';
 
 // Con menos decisiones evaluadas, un porcentaje dice muy poco (3 de 4 no prueba nada): no se muestra
 const MIN_JUDGED = 10;
+const PAGE = 20;
 
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
   const few = stats.judged < MIN_JUDGED;
@@ -35,6 +36,8 @@ export function JournalPage() {
   const { currency } = useSettings();
   const { data, isLoading, error } = useJournal();
   const [filter, setFilter] = useState<Filter>('TODAS');
+  // Se muestran de a PAGE decisiones: con cientos de operaciones, la lista entera mide decenas de pantallas
+  const [shown, setShown] = useState(PAGE);
 
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error} />;
@@ -48,7 +51,7 @@ export function JournalPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Diario de decisiones</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Diario de decisiones</h1>
         <p className="mt-1 text-sm text-muted">
           Qué hizo el precio 30, 90 y 180 días después de cada compra y venta, medido en dólares (así la inflación no hace que toda compra
           parezca un acierto). Mira el <span className="text-text">momento</span> de cada decisión, no si ganaste plata: eso está más abajo,
@@ -77,14 +80,19 @@ export function JournalPage() {
         ) : (
           <p className="mt-1 text-sm">Todavía no hay decisiones con datos del mercado para comparar.</p>
         )}
-        <p className="mt-2 text-xs leading-relaxed text-muted">
-          Cada compra y venta se compara con lo que hizo en esos mismos días el S&amp;P 500 (CEDEARs) o el Merval (acciones), en dólares.
-          Ejemplo: compraste y a los 90 días subió 5%, pero el S&amp;P 500 subió 10%: el precio subió, pero te habría ido mejor en el índice.
-          Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice. Solo cuentan las decisiones que ya cumplieron
-          90 días. Compras y ventas no se miden con la misma vara: unas pocas empresas explican gran parte de la suba del índice, así que la
-          mayoría de las acciones individuales anda peor que él. Por eso una compra al azar suele ganarle al mercado menos de la mitad de las
-          veces, y una venta al azar, más de la mitad.
-        </p>
+        <Explain label="¿Cómo se mide?" className="mt-3">
+          <p>
+            Cada compra y venta se compara con lo que hizo en esos mismos días el S&amp;P 500 (CEDEARs) o el Merval (acciones), en dólares.
+            Ejemplo: compraste y a los 90 días subió 5%, pero el S&amp;P 500 subió 10%: el precio subió, pero te habría ido mejor en el índice.
+            Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice. Solo cuentan las decisiones que ya cumplieron
+            90 días.
+          </p>
+          <p>
+            Compras y ventas no se miden con la misma vara: unas pocas empresas explican gran parte de la suba del índice, así que la mayoría
+            de las acciones individuales anda peor que él. Por eso una compra al azar suele ganarle al mercado menos de la mitad de las veces,
+            y una venta al azar, más de la mitad.
+          </p>
+        </Explain>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -92,11 +100,16 @@ export function JournalPage() {
         <StatCard label="En compras" stats={s.buys} />
         <StatCard label="En ventas" stats={s.sells} />
       </section>
-      <p className="-mt-3 text-xs text-muted">
-        Una compra es acierto si a los 90 días el precio subió más de 2%; una venta, si bajó. En un mercado que viene subiendo, esto favorece a
-        las compras: por eso lo principal es "contra el mercado". Una orden que el broker partió en varias cuenta como una decisión, y solo
-        entran las que ya cumplieron 90 días. Se mide con el dólar que elegiste (MEP o CCL): con el otro, los porcentajes cambian un poco.
-      </p>
+      <div className="-mt-3 flex flex-col gap-1">
+        <p className="text-xs text-muted">Una compra es acierto si a los 90 días el precio subió más de 2%; una venta, si bajó.</p>
+        <Explain label="Más detalle">
+          <p>
+            En un mercado que viene subiendo, esto favorece a las compras: por eso lo principal es "contra el mercado". Una orden que el broker
+            partió en varias cuenta como una decisión, y solo entran las que ya cumplieron 90 días. Se mide con el dólar que elegiste (MEP o
+            CCL): con el otro, los porcentajes cambian un poco.
+          </p>
+        </Explain>
+      </div>
 
       <Patterns journal={data} />
 
@@ -116,7 +129,11 @@ export function JournalPage() {
         {(['TODAS', 'ACIERTO', 'ERROR', 'NEUTRAL', 'PENDIENTE'] as Filter[]).map((f) => (
           <button
             key={f}
-            onClick={() => setFilter(f)}
+            onClick={() => {
+              setFilter(f);
+              setShown(PAGE);
+            }}
+            aria-pressed={filter === f}
             className={`rounded-sm px-3 py-1 text-xs transition ${filter === f ? 'bg-card text-text' : 'text-muted hover:text-text'}`}
           >
             {{ TODAS: 'Todas', ACIERTO: 'Aciertos', ERROR: 'Errores', NEUTRAL: 'Neutrales', PENDIENTE: 'Esperando' }[f]}
@@ -127,7 +144,7 @@ export function JournalPage() {
       {data.entries.length === 0 && <p className="text-muted">Cuando registres compras y ventas, vas a ver acá cómo te fue con cada decisión.</p>}
 
       <ul className="flex flex-col gap-3">
-        {entries.map((e) => (
+        {entries.slice(0, shown).map((e) => (
           <li key={e.id}>
             <Link to={`/operacion/${e.id}`} className="flex flex-col gap-2 rounded-xl bg-panel p-4 transition hover:bg-card">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -176,6 +193,15 @@ export function JournalPage() {
           </li>
         ))}
       </ul>
+
+      {entries.length > shown && (
+        <div className="flex flex-col items-center gap-2">
+          <p className="tabular text-xs text-muted">
+            Mostrando {shown} de {entries.length}
+          </p>
+          <Button onClick={() => setShown((n) => n + PAGE)}>Ver {Math.min(PAGE, entries.length - shown)} más</Button>
+        </div>
+      )}
     </div>
   );
 }

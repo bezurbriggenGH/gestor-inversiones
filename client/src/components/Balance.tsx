@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Costs, Currency, HoldComparison, Journal, JournalStats } from '../api';
 import { useCosts, useHold } from '../hooks';
 import { date, money, num, pct, todayIso, tone } from '../format';
-import { ErrorBox, Loading } from './ui';
+import { ErrorBox, Explain, Loading } from './ui';
 
 const share = (v: number) => pct(v).replace('+', '');
 
@@ -239,11 +239,16 @@ export function WinsSummary({ journal }: { journal: Journal }) {
       </div>
       <p className="text-xs text-muted">
         Es otra cosa que los aciertos de arriba: acá no importa qué hizo el precio después, sino si cobraste más de lo que te habían costado
-        esas acciones (a tu precio promedio, comisiones incluidas). Mirá el porcentaje junto con los montos: se puede ganar en casi todas las
-        ventas y perder plata si la única mala fue grande. Las ventas del mismo activo en el mismo día cuentan como una.
-        {c === 'USD' &&
-          ' Se mide en dólares, como el resto del Diario: en pesos, la inflación hace que con el tiempo casi cualquier venta dé ganancia.'}
+        esas acciones.
       </p>
+      <Explain>
+        <p>
+          Se compara con tu precio promedio, comisiones incluidas. Mirá el porcentaje junto con los montos: se puede ganar en casi todas las
+          ventas y perder plata si la única mala fue grande. Las ventas del mismo activo en el mismo día cuentan como una.
+          {c === 'USD' &&
+            ' Se mide en dólares, como el resto del Diario: en pesos, la inflación hace que con el tiempo casi cualquier venta dé ganancia.'}
+        </p>
+      </Explain>
     </section>
   );
 }
@@ -313,11 +318,13 @@ export function Patterns({ journal }: { journal: Journal }) {
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-xs text-muted">
-        Una diferencia se afirma solo si pasa una prueba estadística: tiene que ser demasiado grande para salir de la suerte, también al
-        sacar cualquier activo de a uno (31 compras de la misma acción son casi una sola apuesta, no 31). Como se hacen tres comparaciones a
-        la vez, a cada una se le pide más que a una sola.
-      </p>
+      <Explain label="¿Cuándo una diferencia cuenta?" className="mt-3">
+        <p>
+          Una diferencia se afirma solo si pasa una prueba estadística: tiene que ser demasiado grande para salir de la suerte, también al
+          sacar cualquier activo de a uno (31 compras de la misma acción son casi una sola apuesta, no 31). Como se hacen tres comparaciones
+          a la vez, a cada una se le pide más que a una sola.
+        </p>
+      </Explain>
     </section>
   );
 }

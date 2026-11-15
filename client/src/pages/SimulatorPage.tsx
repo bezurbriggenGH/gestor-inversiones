@@ -8,10 +8,10 @@ import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
 import { LineChart, type ChartLine } from '../components/LineChart';
 
 const COLORS: Record<SimAlternative, string> = {
-  activo: '#7c6bb0',
+  activo: '#9483c6',
   dolar: '#4f9d69',
   plazofijo: '#c49a4a',
-  inflacion: '#c25450',
+  inflacion: '#da6a64',
   colchon: '#8a8a8f',
 };
 
@@ -201,7 +201,7 @@ export function SimulatorPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Simulador</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Simulador</h1>
         <p className="mt-1 text-sm text-muted">
           Elegí una acción o CEDEAR, un monto y una fecha: te mostramos cuánto tendrías hoy y si convenía más el dólar, un plazo fijo o
           nada.

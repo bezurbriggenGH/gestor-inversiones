@@ -10,7 +10,7 @@ import { Button, ErrorBox, Loading, inputCls } from '../components/ui';
 const MONTHS_SHOWN = 6;
 const INCOME_COLOR = '#4f9d69';
 const INFLATION_COLOR = '#8a8a8f';
-const EXPENSE_COLORS = ['#c25450', '#7c6bb0', '#5a9bb0', '#b8964f', '#d08770', '#9a7fb8', '#6fa3a0'];
+const EXPENSE_COLORS = ['#da6a64', '#9483c6', '#5a9bb0', '#b8964f', '#d08770', '#9a7fb8', '#6fa3a0'];
 const SUGGESTIONS: [string, BudgetKind][] = [
   ['Sueldo', 'INGRESO'],
   ['Alquiler', 'GASTO'],
@@ -50,7 +50,7 @@ export function BudgetPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Sueldo y gastos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Sueldo y gastos</h1>
         <p className="mt-1 text-sm text-muted">
           Opcional. Cargá cada mes tu sueldo y tus gastos fijos (alquiler, seguro, servicios…) para ver si tu sueldo sigue a la inflación
           y qué gasto sube más rápido. Todo en pesos.

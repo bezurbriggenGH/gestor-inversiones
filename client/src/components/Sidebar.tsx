@@ -92,7 +92,7 @@ export function Sidebar() {
                 <>
                   <span className={isActive ? 'text-text' : ''}>{l.label}</span>
                   {l.badge ? (
-                    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-down px-1.5 text-[10px] font-bold text-white">{l.badge}</span>
+                    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-down px-1.5 text-[10px] font-bold text-bg">{l.badge}</span>
                   ) : (
                     isActive && <span className="h-2.5 w-2.5 rounded-full bg-muted" />
                   )}

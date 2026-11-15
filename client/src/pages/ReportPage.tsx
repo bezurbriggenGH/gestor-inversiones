@@ -63,7 +63,7 @@ export function ReportPage() {
   if (p.positions.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">Informe</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Informe</h1>
         <p className="text-muted">Cuando cargues operaciones, acá vas a poder armar un informe para guardar como PDF.</p>
       </div>
     );
@@ -73,7 +73,7 @@ export function ReportPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Informe de inversiones</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Informe de inversiones</h1>
           <p className="mt-1 text-sm text-muted">
             {user?.name} · al {date(todayIso())} · en {currency === 'ARS' ? 'pesos' : `dólares ${FX_LABEL[fxKind]}`}
             {p.fx && ` · dólar ${FX_LABEL[p.fxKind]} ${money(p.fx.rate, 'ARS')}`}

@@ -79,6 +79,17 @@ export function ErrorBox({ error }: { error: unknown }) {
   );
 }
 
+// Aclaraciones largas (cómo se calcula, de dónde salen los datos): cerradas por defecto,
+// para que la pantalla muestre los números y quien quiera el detalle lo abra
+export function Explain({ label = '¿Cómo se calcula?', children, className = '' }: { label?: string; children: ReactNode; className?: string }) {
+  return (
+    <details className={className}>
+      <summary className="w-fit cursor-pointer text-xs text-link hover:underline">{label}</summary>
+      <div className="mt-2 flex max-w-prose flex-col gap-2 text-sm leading-relaxed text-muted">{children}</div>
+    </details>
+  );
+}
+
 export function Loading({ label = 'Cargando…' }: { label?: string }) {
   return <p className="animate-pulse text-sm text-muted">{label}</p>;
 }

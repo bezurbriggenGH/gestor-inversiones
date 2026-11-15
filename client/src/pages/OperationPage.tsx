@@ -127,7 +127,7 @@ export function OperationPage() {
           ←
         </button>
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold">
+          <h1 className="text-2xl font-semibold tracking-tight">
             <span className={TYPE_STYLE[op.type]}>{{ COMPRA: 'Compra', VENTA: 'Venta', DIVIDENDO: 'Dividendo' }[op.type]}</span>{' '}
             de{' '}
             <Link to={`/activo/${data.asset.ticker}`} className="hover:underline">
