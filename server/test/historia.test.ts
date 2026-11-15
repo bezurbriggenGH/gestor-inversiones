@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { buildHistory, monthlyReturns, plazoFijoIndex, xirr } from '../src/services/history.ts';
-import { adjustForSplits, adjustOperations, assertNoShortSelling, buildPortfolio, computePosition } from '../src/services/portfolio.ts';
+import { DateSeries, adjustForSplits, adjustOperations, assertNoShortSelling, buildPortfolio, computePosition } from '../src/services/portfolio.ts';
 
 describe('TIR (rendimiento por año)', () => {
   test('pongo $1.000 y al año recibo $1.100 → 10% anual', () => {
@@ -66,6 +66,27 @@ describe('Rendimiento mes a mes', () => {
     );
     assert.ok(near(months[1].return, 0.1));
     assert.ok(near(months[2].return, -0.1));
+  });
+
+  test('en pesos, cada mes también descontada la inflación del mes: +6% con 4% de inflación es +1,9% real', () => {
+    const inflation = new DateSeries([
+      { date: '2024-01-31', value: 1 },
+      { date: '2024-02-29', value: 1.04 }, // febrero: 4%
+      { date: '2024-03-29', value: 1.04 * 1.1 }, // marzo: 10%
+    ]);
+    const months = monthlyReturns(
+      [
+        { date: '2024-01-31', value: 1000, netInvested: 1000 },
+        { date: '2024-02-29', value: 1060, netInvested: 1000 }, // +6% en pesos
+        { date: '2024-03-29', value: 1113, netInvested: 1000 }, // +5% en pesos, con 10% de inflación
+      ],
+      inflation,
+    );
+    assert.ok(near(months[1].inflation!, 0.04));
+    assert.ok(near(months[1].real!, 1.06 / 1.04 - 1)); // +1,9%
+    assert.ok(near(months[2].real!, 1.05 / 1.1 - 1)); // −4,5%: en pesos subió, pero perdió contra la inflación
+    // Sin índice (en dólares), no hay versión real
+    assert.equal(monthlyReturns([{ date: '2024-01-31', value: 1, netInvested: 1 }])[0].real, null);
   });
 });
 
@@ -244,8 +265,8 @@ describe('Variación del día de la cartera', () => {
     // HOYSI: 10 × ($110 − $100) = $100. HOYNO subió $10 el 31/03, pero el 01/04 no se movió.
     assert.equal(p.summary.dayChange, 100); // antes: $200
     assert.equal(p.positions.find((x) => x.ticker === 'HOYNO')!.dayChange, 0);
-    // Sobre lo que valía todo ayer: 10 × $100 + 10 × $60 = $1.600
-    assert.ok(near(p.summary.dayChangePct, 100 / 1600));
+    // Sobre lo que valía ayer lo que tiene dato del día: 10 × $100 = $1.000 (HOYNO no suma ni agranda la base)
+    assert.ok(near(p.summary.dayChangePct, 100 / 1000));
     assert.equal(p.summary.marketValue, 10 * 110 + 10 * 60);
     // La pantalla tiene que decir "sin precio del 01/04", no mostrar un 0% inventado
     assert.equal(p.positions.find((x) => x.ticker === 'HOYNO')!.missingDay, '2025-04-01');

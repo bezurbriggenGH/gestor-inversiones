@@ -26,7 +26,7 @@ const LOST: Record<SimAlternative, string> = {
   dolar: 'el dólar',
   plazofijo: 'el plazo fijo',
   // La inflación no es algo en lo que se invierta: lo que "convenía" era mantener la plata ajustada por inflación
-  inflacion: 'mantener la plata ajustada por inflación (UVA)',
+  inflacion: 'mantener la plata ajustada por inflación (IPC)',
   colchon: 'guardar los pesos',
 };
 
@@ -140,7 +140,7 @@ function Result({ sim }: { sim: Simulation }) {
       </section>
 
       <p className="text-xs text-muted">
-        Simulación con precios de cierre reales, sin comisiones. "Inflación" es la plata ajustada por el índice UVA (mantener el poder de
+        Simulación con precios de cierre reales, sin comisiones. "Inflación" es la plata ajustada por la inflación oficial, IPC del INDEC (mantener el poder de
         compra); "plazo fijo", a 30 días renovado con la tasa promedio de cada mes. Lo que pasó antes no garantiza lo que va a pasar.
       </p>
     </div>

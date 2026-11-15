@@ -53,11 +53,12 @@ export function ReportPage() {
   const years = new Map<string, { factor: number; gain: number }>();
   for (const m of h.monthly) {
     const y = years.get(m.month.slice(0, 4)) ?? { factor: 1, gain: 0 };
-    y.factor *= 1 + m.return;
+    y.factor *= 1 + (m.real ?? m.return); // en pesos, descontada la inflación (como el calendario)
     y.gain += m.gain;
     years.set(m.month.slice(0, 4), y);
   }
   const patterns = journalPatterns(j);
+  const realYears = h.monthly.some((m) => m.real != null);
 
   if (p.positions.length === 0) {
     return (
@@ -101,34 +102,37 @@ export function ReportPage() {
       </Block>
 
       <Block title="Lo que tenés hoy">
-        <table className="tabular w-full text-sm">
-          <thead className="text-left text-xs text-muted">
-            <tr className="border-b border-line">
-              <th className="py-2 font-normal">Activo</th>
-              <th className="py-2 text-right font-normal">Cantidad</th>
-              <th className="py-2 text-right font-normal">Precio</th>
-              <th className="py-2 text-right font-normal">Valor</th>
-              <th className="py-2 text-right font-normal">Peso</th>
-              <th className="py-2 text-right font-normal">Ganancia</th>
-            </tr>
-          </thead>
-          <tbody>
-            {held.map((x) => (
-              <tr key={x.ticker} className="border-b border-line/50 last:border-0">
-                <td className="py-1.5">
-                  {x.ticker} <span className="text-xs text-muted">{x.type === 'CEDEAR' ? 'CEDEAR' : 'Acción'}</span>
-                </td>
-                <td className="py-1.5 text-right">{num(x.quantity)}</td>
-                <td className="py-1.5 text-right">{money(x.price, currency)}</td>
-                <td className="py-1.5 text-right">{money(x.marketValue, currency, false, true)}</td>
-                <td className="py-1.5 text-right">{share(x.weight)}</td>
-                <td className={`py-1.5 text-right ${tone(x.unrealized)}`}>
-                  {money(x.unrealized, currency, true, true)} ({pct(x.unrealizedPct, 1)})
-                </td>
+        {/* En el celular no entran las seis columnas: cantidad y precio se ven desde pantallas medianas (y al imprimir) */}
+        <div className="overflow-x-auto">
+          <table className="tabular w-full text-sm">
+            <thead className="text-left text-xs text-muted">
+              <tr className="border-b border-line">
+                <th className="py-2 font-normal">Activo</th>
+                <th className="hidden py-2 text-right font-normal sm:table-cell">Cantidad</th>
+                <th className="hidden py-2 text-right font-normal sm:table-cell">Precio</th>
+                <th className="py-2 text-right font-normal">Valor</th>
+                <th className="py-2 text-right font-normal">Peso</th>
+                <th className="py-2 text-right font-normal">Ganancia</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {held.map((x) => (
+                <tr key={x.ticker} className="border-b border-line/50 last:border-0">
+                  <td className="py-1.5">
+                    {x.ticker} <span className="text-xs text-muted">{x.type === 'CEDEAR' ? 'CEDEAR' : 'Acción'}</span>
+                  </td>
+                  <td className="hidden py-1.5 text-right sm:table-cell">{num(x.quantity)}</td>
+                  <td className="hidden py-1.5 text-right sm:table-cell">{money(x.price, currency)}</td>
+                  <td className="py-1.5 text-right">{money(x.marketValue, currency, false, true)}</td>
+                  <td className="py-1.5 text-right">{share(x.weight)}</td>
+                  <td className={`py-1.5 text-right ${tone(x.unrealized)}`}>
+                    {money(x.unrealized, currency, true, true)} ({pct(x.unrealizedPct, 1)})
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Block>
 
       <Block title="Rendimiento por año">
@@ -136,8 +140,8 @@ export function ReportPage() {
           <thead className="text-left text-xs text-muted">
             <tr className="border-b border-line">
               <th className="py-2 font-normal">Año</th>
-              <th className="py-2 text-right font-normal">Rendimiento</th>
-              <th className="py-2 text-right font-normal">Ganancia</th>
+              <th className="py-2 text-right font-normal">{realYears ? 'Rendimiento real' : 'Rendimiento'}</th>
+              <th className="py-2 text-right font-normal">{realYears ? 'Ganancia en pesos' : 'Ganancia'}</th>
             </tr>
           </thead>
           <tbody>
@@ -150,7 +154,11 @@ export function ReportPage() {
             ))}
           </tbody>
         </table>
-        <p className="text-xs text-muted">Rendimiento de la cartera sin contar la plata que agregaste o sacaste. El año en curso va hasta hoy.</p>
+        <p className="text-xs text-muted">
+          Rendimiento de la cartera sin contar la plata que agregaste o sacaste
+          {realYears ? ', descontada la inflación de cada mes (IPC); la ganancia está en pesos de cada momento' : ''}. El año en curso va hasta hoy. No
+          coincide con la TIR: la TIR pesa más los meses en que tenías más plata puesta; acá cada mes pesa igual.
+        </p>
       </Block>
 
       <Block title="Contra otras alternativas">
@@ -202,8 +210,8 @@ export function ReportPage() {
         </div>
         <p className="text-sm text-muted">
           {j.vsMarket.compared > 0 &&
-            `En ${j.vsMarket.beat} de ${j.vsMarket.compared} decisiones elegiste mejor que el S&P 500 (CEDEARs) o el Merval (acciones) en el mismo plazo` +
-              (j.vsMarket.differsFromChance ? '. ' : ': con esta cantidad, no se distingue de elegir al azar. ')}
+            `En ${j.vsMarket.beat} de ${j.vsMarket.compared} decisiones elegiste mejor que el S&P 500 (CEDEARs) o el Merval (acciones) a 90 días` +
+              (j.vsMarket.even > 0 ? ` (otras ${j.vsMarket.even} quedaron a menos de 2%: empates). ` : '. ')}
           {j.stats.all.hits} aciertos de {j.stats.all.judged} decisiones evaluadas ({j.stats.all.total} en total; una orden que el broker partió en
           varias cuenta como una). Una compra es acierto si a los 90 días el precio subió en dólares; una venta, si bajó. Mide el momento de cada
           decisión, no si se ganó plata.
@@ -234,7 +242,7 @@ export function ReportPage() {
       </Block>
 
       <p className="text-xs text-muted">
-        Precios: Yahoo Finance. Dólar, inflación (UVA) y plazo fijo: ArgentinaDatos. Costo por precio promedio ponderado, comisiones incluidas.
+        Precios: Yahoo Finance. Dólar, inflación (IPC del INDEC) y plazo fijo: ArgentinaDatos. Costo por precio promedio ponderado, comisiones incluidas.
         {currency === 'USD' && ' En dólares, cada operación se convierte con el dólar del día en que se hizo.'}
       </p>
     </div>

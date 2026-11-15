@@ -214,15 +214,40 @@ export interface Position {
   prevMarketValue: number; // lo que valía ayer lo que ya tenías ayer
 }
 
-// Entre una rueda y la siguiente pasan como mucho 5 días corridos (un fin de semana largo de carnaval
-// o Semana Santa). Si entre los dos últimos precios guardados hay más, el anterior no es "ayer":
-// falta historial (Yahoo solo guarda el precio del día de algunos CEDEARs).
+// Sin saber qué días operó BYMA, se supone que entre una rueda y la siguiente pasan como mucho 5 días
+// corridos. Es solo el plan B: con la base completa se usa `previousSession`, que conoce los feriados.
 const MAX_DAYS_BETWEEN_SESSIONS = 5;
 
-export function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: PriceRow | undefined, conv: Converter) {
+/**
+ * La rueda de BYMA anterior a una fecha: el último día anterior con precio de algún activo.
+ * Así se saben los feriados sin una lista: en Semana Santa de 2024, la rueda anterior al 03/04 fue el
+ * 27/03 (7 días antes), y un activo con precio de ese día sí tiene variación del día. En cambio, si
+ * otros activos tienen precio del 12/11 y este recién del 06/11, no operó el día anterior.
+ */
+export function previousSession(date: string): string | null {
+  return get<{ d: string | null }>('SELECT MAX(date) AS d FROM prices WHERE date < ?', date)?.d ?? null;
+}
+
+/**
+ * `prevSession`: la rueda anterior a la del último precio (ver previousSession). Si no se pasa, se usa
+ * el plan B de los 5 días corridos.
+ */
+export function computePosition(
+  ops: OperationRow[],
+  last: PriceRow | undefined,
+  prev: PriceRow | undefined,
+  conv: Converter,
+  prevSession?: string | null,
+) {
   // Sin el precio de la rueda anterior no se puede saber cuánto varió en el día: no se suma nada (0)
   // y se marca dayKnown = false, en vez de dar la variación de toda una semana como si fuera la de hoy
-  if (last && prev && Date.parse(last.date) - Date.parse(prev.date) > MAX_DAYS_BETWEEN_SESSIONS * 86_400_000) prev = undefined;
+  if (last && prev) {
+    const missing =
+      prevSession !== undefined
+        ? prevSession != null && prev.date < prevSession
+        : Date.parse(last.date) - Date.parse(prev.date) > MAX_DAYS_BETWEEN_SESSIONS * 86_400_000;
+    if (missing) prev = undefined;
+  }
   let quantity = 0;
   let costBasis = 0;
   let invested = 0;
@@ -424,7 +449,7 @@ function lastTwoPrices(ticker: string): [PriceRow | undefined, PriceRow | undefi
 
 function positionFor(userId: number, ticker: string, conv: Converter) {
   const [last, prev] = lastTwoPrices(ticker);
-  return computePosition(getOperations(userId, ticker), last, prev, conv);
+  return computePosition(getOperations(userId, ticker), last, prev, conv, last ? previousSession(last.date) : null);
 }
 
 export function convertOp(op: OperationRow, conv: Converter, fx: DateSeries, realizedByOp: Map<number, number>) {
@@ -551,8 +576,10 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
   const dividends = sum('dividends');
   const invested = sum('invested');
   const dayChange = sum('dayChange');
-  // Lo que valía ayer lo que ya tenías (lo comprado hoy no cuenta en la base del %)
-  const yesterdayValue = sum('prevMarketValue');
+  // Lo que valía ayer lo que ya tenías (lo comprado hoy no cuenta en la base del %). Solo de los activos
+  // con dato del día: si un activo no suma a la variación, tampoco tiene que agrandar la base y achicar el %.
+  // Ejemplo: $1.000 que subieron $100 y $600 sin dato → +10%, no +6,25%.
+  const yesterdayValue = positions.filter((p) => p.dayKnown).reduce((acc, p) => acc + p.prevMarketValue, 0);
   const totalGain = realized + unrealized + dividends;
   // El pico se calcula sobre todas las operaciones juntas, en orden: no es la suma de los picos de cada activo
   const peak = peakCapital(getOperations(userId), conv);

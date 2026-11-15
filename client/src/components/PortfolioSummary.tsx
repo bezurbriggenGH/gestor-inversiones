@@ -30,7 +30,7 @@ function RealReturn({ real, irr }: { real: RealReturnData; irr: number | null })
   if (real.irr != null) {
     return (
       <>
-        <span className="text-sm text-muted" title="Cuánto creció tu plata por año por encima de la inflación (índice UVA), considerando cuándo entró y salió cada peso">
+        <span className="text-sm text-muted" title="Cuánto creció tu plata por año por encima de la inflación (IPC del INDEC), considerando cuándo entró y salió cada peso">
           Rendimiento por año, descontada la inflación
         </span>
         <span className={`tabular text-3xl font-semibold ${tone(real.irr)}`}>{pct(real.irr)}</span>
@@ -129,7 +129,7 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
         {currency === 'ARS' && real && (
           <span
             className="tabular text-sm text-muted"
-            title="Lo que tenés hoy menos lo que valdría cada peso que pusiste (y sacaste) si hubiera seguido a la inflación (índice UVA). En pesos de hoy."
+            title="Lo que tenés hoy menos lo que valdría cada peso que pusiste (y sacaste) si hubiera seguido a la inflación (IPC del INDEC). En pesos de hoy."
           >
             Descontada la inflación: <span className={`font-medium ${tone(real.gain)}`}>{money(real.gain, 'ARS', true)}</span>
           </span>
@@ -182,11 +182,14 @@ export function Insights({ data, history }: { data: Portfolio; history?: History
   const month = history?.monthly[history.monthly.length - 1];
   if (month) {
     const name = MONTHS[Number(month.month.slice(5, 7)) - 1];
+    // En pesos, descontada la inflación del mes (igual que el calendario)
+    const r = month.real ?? month.return;
     items.push({
-      tone: month.return >= 0 ? 'up' : 'down',
+      tone: r >= 0 ? 'up' : 'down',
       text: (
         <>
-          En lo que va de {name} tu cartera {month.return >= 0 ? 'rinde' : 'pierde'} {b(pct(Math.abs(month.return)).replace('+', ''), tone(month.return))}.
+          En lo que va de {name} tu cartera {r >= 0 ? 'rinde' : 'pierde'} {b(pct(Math.abs(r)).replace('+', ''), tone(r))}
+          {month.real != null && ' descontada la inflación'}.
         </>
       ),
     });

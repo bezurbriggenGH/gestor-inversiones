@@ -8,14 +8,17 @@ const moneyFmt = new Map<string, Intl.NumberFormat>();
  */
 export function money(v: number, currency: Currency, signed = false, compact = false): string {
   const digits = compact && Math.abs(v) >= 100 ? 0 : 2;
-  const key = `${currency}-${signed}-${digits}`;
+  // Montos de menos de 1 (el precio en dólares de una acción de $30): con 2 decimales, US$ 0,0193 se
+  // leía "US$ 0,02" y un promedio de US$ 0,0466, "US$ 0,05". Hasta 4 decimales se pueden comparar.
+  const maxDigits = v !== 0 && Math.abs(v) < 1 ? 4 : digits;
+  const key = `${currency}-${signed}-${digits}-${maxDigits}`;
   let f = moneyFmt.get(key);
   if (!f) {
     f = new Intl.NumberFormat('es-AR', {
       style: 'currency',
       currency,
       minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
+      maximumFractionDigits: maxDigits,
       signDisplay: signed ? 'exceptZero' : 'auto',
     });
     moneyFmt.set(key, f);

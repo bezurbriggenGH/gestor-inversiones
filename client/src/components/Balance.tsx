@@ -134,7 +134,7 @@ export function CostsResult({ data }: { data: Costs }) {
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-line">
             <th className="py-2 font-normal">Año</th>
-            <th className="py-2 text-right font-normal">Operaciones</th>
+            <th className="hidden py-2 text-right font-normal sm:table-cell">Operaciones</th>
             <th className="py-2 text-right font-normal">Monto operado</th>
             <th className="py-2 text-right font-normal">Comisiones</th>
             <th className="py-2 text-right font-normal">% del monto</th>
@@ -144,7 +144,7 @@ export function CostsResult({ data }: { data: Costs }) {
           {data.byYear.map((y) => (
             <tr key={y.year} className="border-b border-line/50">
               <td className="py-2">{y.year}</td>
-              <td className="py-2 text-right">{y.operations}</td>
+              <td className="hidden py-2 text-right sm:table-cell">{y.operations}</td>
               <td className="py-2 text-right">{money(y.traded, c, false, true)}</td>
               <td className="py-2 text-right">{money(y.fees, c)}</td>
               <td className="py-2 text-right">{share(y.pctOfTraded)}</td>
@@ -152,7 +152,7 @@ export function CostsResult({ data }: { data: Costs }) {
           ))}
           <tr className="font-medium">
             <td className="py-2">Total</td>
-            <td className="py-2 text-right">{data.operations}</td>
+            <td className="hidden py-2 text-right sm:table-cell">{data.operations}</td>
             <td className="py-2 text-right">{money(data.traded, c, false, true)}</td>
             <td className="py-2 text-right">{money(data.fees, c)}</td>
             <td className="py-2 text-right">{share(data.pctOfTraded)}</td>
@@ -281,10 +281,10 @@ export function journalPatterns(journal: Pick<Journal, 'stats' | 'differences'>)
     if (a.judged < MIN || b.judged < MIN || a.hitRate == null || b.hitRate == null) return;
     const d = a.hitRate - b.hitRate;
     if (!real) {
-      // Ejemplo: "Comprando acertás 44% (de 198) y vendiendo, 51% (de 76). Con tan pocas…"
+      // Ejemplo: "Comprando acertás 44% (de 198) y vendiendo, 51% (de 76). Esa diferencia no alcanza…"
       out.push(
         `${names[0]} acertás ${share(a.hitRate)} (de ${a.judged}) y ${names[1]}, ${share(b.hitRate)} (de ${b.judged}). ` +
-          'Con esas cantidades, una diferencia así puede salir de pura casualidad: todavía no se puede decir que una te salga mejor que la otra.',
+          'Esa diferencia no alcanza para afirmar nada: puede ser casualidad, o depender de uno o dos activos.',
       );
     } else {
       out.push(more(d > 0 ? 'a' : 'b', Math.round(Math.abs(d) * 100), share(Math.max(a.hitRate, b.hitRate)), share(Math.min(a.hitRate, b.hitRate))));
@@ -292,13 +292,13 @@ export function journalPatterns(journal: Pick<Journal, 'stats' | 'differences'>)
   };
   compare(stats.buys, stats.sells, differences.buysSells, ['Comprando', 'vendiendo'], (w, p, hi, lo) =>
     w === 'a'
-      ? `Elegís mejor cuándo comprar (${hi} de aciertos) que cuándo vender (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`
-      : `Elegís mejor cuándo vender (${hi} de aciertos) que cuándo comprar (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`,
+      ? `Elegís mejor cuándo comprar (${hi} de aciertos) que cuándo vender (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad (y no depende de un solo activo).`
+      : `Elegís mejor cuándo vender (${hi} de aciertos) que cuándo comprar (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad (y no depende de un solo activo).`,
   );
   compare(stats.acciones, stats.cedears, differences.accionesCedears, ['En acciones argentinas', 'en CEDEARs'], (w, p, hi, lo) =>
     w === 'a'
-      ? `Te va mejor con acciones argentinas (${hi}) que con CEDEARs (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`
-      : `Te va mejor con CEDEARs (${hi}) que con acciones argentinas (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`,
+      ? `Te va mejor con acciones argentinas (${hi}) que con CEDEARs (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad (y no depende de un solo activo).`
+      : `Te va mejor con CEDEARs (${hi}) que con acciones argentinas (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad (y no depende de un solo activo).`,
   );
   compare(stats.withNote, stats.withoutNote, differences.note, ['Con justificación', 'sin ella'], (w, p, hi, lo) =>
     w === 'a'
@@ -328,6 +328,11 @@ export function Patterns({ journal }: { journal: Journal }) {
           </li>
         ))}
       </ul>
+      <p className="mt-3 text-xs text-muted">
+        Una diferencia se afirma solo si pasa una prueba estadística: tiene que ser demasiado grande para salir de la suerte, también al
+        sacar cualquier activo de a uno (31 compras de la misma acción son casi una sola apuesta, no 31). Como se hacen tres comparaciones a
+        la vez, a cada una se le pide más que a una sola.
+      </p>
     </section>
   );
 }

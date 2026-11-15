@@ -7,14 +7,6 @@ export interface IndexPoint {
   value: number;
 }
 
-/** UVA: índice diario que sigue a la inflación (CER). Fuente: ArgentinaDatos. */
-export async function fetchUva(): Promise<IndexPoint[]> {
-  const res = await fetchWithTimeout('https://api.argentinadatos.com/v1/finanzas/indices/uva', 'ArgentinaDatos');
-  if (!res.ok) throw new Error(`ArgentinaDatos (UVA) respondió ${res.status}`);
-  const data = (await res.json()) as { fecha: string; valor: number }[];
-  return data.filter((d) => d.valor > 0).map((d) => ({ date: d.fecha, value: d.valor }));
-}
-
 /**
  * Inflación mensual oficial (IPC del INDEC), en porcentaje: 2.2 = 2,2% en el mes. La fecha es el último día
  * del mes. Se publica a mediados del mes siguiente. Fuente: ArgentinaDatos.

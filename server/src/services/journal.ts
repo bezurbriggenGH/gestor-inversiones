@@ -60,27 +60,47 @@ export const MIN_JUDGED = 10;
  * Ejemplo: 87 aciertos de 198 compras (44%) contra 39 de 76 ventas (51%). En total 126 de 274 (46%);
  * por suerte, la diferencia varía √(0,46 × 0,54 × (1/198 + 1/76)) ≈ 6,7 puntos. La diferencia es de
  * 7,4 puntos: 1,1 veces eso, menos de 1,96 → puede ser casualidad.
+ * `z` es cuántas veces tiene que ser: 1,96 para una comparación sola (95% de confianza).
  */
-export function realDifference(a: { hits: number; judged: number }, b: { hits: number; judged: number }): boolean {
+export function realDifference(a: { hits: number; judged: number }, b: { hits: number; judged: number }, z = 1.96): boolean {
   if (a.judged < MIN_JUDGED || b.judged < MIN_JUDGED) return false;
   const pa = a.hits / a.judged;
   const pb = b.hits / b.judged;
   const p = (a.hits + b.hits) / (a.judged + b.judged);
   const spread = Math.sqrt(p * (1 - p) * (1 / a.judged + 1 / b.judged));
   if (spread === 0) return false; // todos aciertos o todos errores en los dos grupos: no hay diferencia
-  return Math.abs(pa - pb) / spread >= 1.96;
+  return Math.abs(pa - pb) / spread >= z;
 }
 
 /**
- * ¿Le ganaste al mercado más (o menos) veces de lo que daría elegir al azar? Al azar, cada decisión tiene
- * 50% de chances, como una moneda. Misma prueba que arriba: la distancia a 50% tiene que ser al menos
- * 1,96 veces lo que varía por suerte, √(0,5 × 0,5 ÷ cantidad).
- * Ejemplo: 127 de 272 (46,7%). Por suerte varía √(0,25 ÷ 272) ≈ 3 puntos; 46,7% está a 3,3 puntos de 50%:
- * 1,1 veces → no se distingue del azar. Con 170 de 272 (62,5%) serían 12,5 puntos, 4,1 veces → sí.
+ * El Diario hace 3 comparaciones a la vez (compras/ventas, acciones/CEDEARs, con/sin justificación).
+ * Con 95% de confianza en cada una, la chance de que alguna "salte" por casualidad ronda el 14%.
+ * Por eso a cada una se le pide 95% ÷ 3 de error como máximo (corrección de Bonferroni): 2,39 en vez de 1,96.
  */
-export function differsFromChance(beat: number, compared: number): boolean {
-  if (compared < MIN_JUDGED) return false;
-  return Math.abs(beat / compared - 0.5) / Math.sqrt(0.25 / compared) >= 1.96;
+export const PATTERN_Z = 2.39;
+
+/** Una decisión ya evaluada: de qué activo es y si fue acierto. */
+export interface JudgedDecision {
+  ticker: string;
+  hit: boolean;
+}
+
+/**
+ * ¿La diferencia entre dos grupos es real y no depende de un solo activo?
+ * La prueba de arriba supone que cada decisión es independiente, como tiros de moneda separados.
+ * 31 compras de la misma acción en caída no son 31 monedas: son casi una sola apuesta repetida.
+ * Por eso la diferencia tiene que seguir siendo real sacando cualquier activo, de a uno.
+ * Ejemplo: acciones 32 aciertos de 87 contra CEDEARs 84 de 168 da 2,01 veces (pasa 1,96); pero 31 de
+ * esas 87 son de una sola acción con 5 aciertos: sin ella, 27 de 56 (48%) contra 50% → no hay diferencia.
+ */
+export function robustDifference(a: JudgedDecision[], b: JudgedDecision[], z = PATTERN_Z): boolean {
+  const count = (list: JudgedDecision[]) => ({ hits: list.filter((d) => d.hit).length, judged: list.length });
+  if (!realDifference(count(a), count(b), z)) return false;
+  for (const ticker of new Set([...a, ...b].map((d) => d.ticker))) {
+    const without = (list: JudgedDecision[]) => count(list.filter((d) => d.ticker !== ticker));
+    if (!realDifference(without(a), without(b), z)) return false;
+  }
+  return true;
 }
 
 /** Con `ticker`, solo las operaciones de ese activo (para marcarlas en su gráfico). */
@@ -125,7 +145,9 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     const change = judgeConv(idx.at(target), target) / judgeConv(idx.at(date), date) - 1;
     // Cuánto mejor (+) o peor (−) anduvo el activo que el mercado
     const relative = (1 + main.change) / (1 + change) - 1;
-    return { label: MARKET[assetType].label, change, relative, beat: type === 'COMPRA' ? relative > 0 : relative < 0 };
+    // Con menos de 2% de diferencia es un empate (la misma zona neutral que el veredicto): null
+    const beat = Math.abs(relative) <= NEUTRAL_BAND ? null : type === 'COMPRA' ? relative > 0 : relative < 0;
+    return { label: MARKET[assetType].label, change, relative, beat };
   };
   const markets = { CEDEAR: loadIndex(MARKET.CEDEAR.series), ACCION: loadIndex(MARKET.ACCION.series) };
 
@@ -213,18 +235,29 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
   }
   const decisions = [...decisionMap.values()];
 
+  // En los porcentajes, todas las decisiones se miden al mismo plazo (90 días). Las que todavía no lo
+  // cumplieron muestran su veredicto a 30 días en la lista, pero no entran al porcentaje: mezclar plazos
+  // es sumar cosas distintas. Hasta entonces cuentan como "esperando".
+  const final = (e: (typeof decisions)[number]) => e.verdict != null && e.verdictDays === MAIN_HORIZON;
+  const judgedOf = (list: typeof decisions) => list.filter((e) => final(e) && e.verdict !== 'NEUTRAL');
+
   const stats = (list: typeof decisions) => {
-    const judged = list.filter((e) => e.verdict && e.verdict !== 'NEUTRAL');
+    const judged = judgedOf(list);
     const hits = judged.filter((e) => e.verdict === 'ACIERTO').length;
     return {
       total: list.length,
       judged: judged.length,
       hits,
       misses: judged.length - hits,
-      neutral: list.filter((e) => e.verdict === 'NEUTRAL').length,
-      pending: list.filter((e) => !e.verdict).length,
+      neutral: list.filter((e) => final(e) && e.verdict === 'NEUTRAL').length,
+      pending: list.filter((e) => !final(e)).length,
       hitRate: judged.length ? hits / judged.length : null,
     };
+  };
+  // Para comparar dos grupos sin que un solo activo decida (ver robustDifference)
+  const differs = (a: typeof decisions, b: typeof decisions) => {
+    const judged = (list: typeof decisions) => judgedOf(list).map((e) => ({ ticker: e.ticker, hit: e.verdict === 'ACIERTO' }));
+    return robustDifference(judged(a), judged(b));
   };
 
   // Qué pasó, en plata, con todo lo que vendiste
@@ -264,10 +297,15 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     winRate: wins.length + losses.length > 0 ? wins.length / (wins.length + losses.length) : null,
   };
 
-  // Contra el mercado: en cuántas decisiones ya evaluadas elegiste mejor que quedarte en el índice
-  const compared = decisions.filter((e) => e.market);
-  const beat = compared.filter((e) => e.market!.beat).length;
-  const vsMarket = { compared: compared.length, beat, differsFromChance: differsFromChance(beat, compared.length) };
+  // Contra el mercado: en cuántas decisiones ya evaluadas a 90 días elegiste mejor que quedarte en el
+  // índice. Las que quedaron a menos de 2% del índice son empates y se informan aparte.
+  const withMarket = decisions.filter((e) => e.market && e.verdictDays === MAIN_HORIZON);
+  const compared = withMarket.filter((e) => e.market!.beat != null);
+  const vsMarket = {
+    compared: compared.length,
+    beat: compared.filter((e) => e.market!.beat).length,
+    even: withMarket.length - compared.length,
+  };
 
   const groups = {
     all: stats(decisions),
@@ -287,11 +325,20 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     sold,
     closed,
     stats: groups,
-    // ¿La diferencia entre dos grupos dice algo, o puede ser casualidad?
+    // ¿La diferencia entre dos grupos es real (y no de un solo activo), o puede ser casualidad?
     differences: {
-      buysSells: realDifference(groups.buys, groups.sells),
-      accionesCedears: realDifference(groups.acciones, groups.cedears),
-      note: realDifference(groups.withNote, groups.withoutNote),
+      buysSells: differs(
+        decisions.filter((e) => e.type === 'COMPRA'),
+        decisions.filter((e) => e.type === 'VENTA'),
+      ),
+      accionesCedears: differs(
+        decisions.filter((e) => e.assetType === 'ACCION'),
+        decisions.filter((e) => e.assetType === 'CEDEAR'),
+      ),
+      note: differs(
+        decisions.filter((e) => e.hasNote),
+        decisions.filter((e) => !e.hasNote),
+      ),
     },
   };
 }

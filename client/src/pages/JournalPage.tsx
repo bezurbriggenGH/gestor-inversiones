@@ -64,18 +64,8 @@ export function JournalPage() {
             <p className="tabular mt-1 text-3xl font-semibold">{pct(m.beat / m.compared).replace('+', '')}</p>
             <p className="text-sm">
               En <span className="tabular font-medium">{m.beat} de {m.compared}</span> decisiones elegiste mejor que el mercado en el mismo plazo.
-              {m.compared < MIN_JUDGED ? (
-                <span className="text-muted"> Son muy pocas todavía para sacar conclusiones.</span>
-              ) : m.differsFromChance ? (
-                <span className="text-muted">
-                  {' '}
-                  {m.beat / m.compared > 0.5
-                    ? 'Es más de lo que daría elegir al azar, y con tantas decisiones no parece suerte.'
-                    : 'Es menos de lo que daría elegir al azar, y con tantas decisiones no parece mala suerte: te habría ido mejor en el índice.'}
-                </span>
-              ) : (
-                <span className="text-muted"> Está cerca del 50%: con esta cantidad de decisiones, no se distingue de elegir al azar.</span>
-              )}
+              {m.even > 0 && <span className="text-muted"> Otras {m.even} quedaron a menos de 2% del mercado: empates, no cuentan.</span>}
+              {m.compared < MIN_JUDGED && <span className="text-muted"> Son muy pocas todavía para sacar conclusiones.</span>}
             </p>
           </>
         ) : (
@@ -84,7 +74,9 @@ export function JournalPage() {
         <p className="mt-2 text-xs leading-relaxed text-muted">
           Cada compra y venta se compara con lo que hizo en esos mismos días el S&amp;P 500 (CEDEARs) o el Merval (acciones), en dólares.
           Ejemplo: compraste y a los 90 días subió 5%, pero el S&amp;P 500 subió 10%: el precio subió, pero te habría ido mejor en el índice.
-          Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice. Con 50% sería como elegir al azar.
+          Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice. Solo cuentan las decisiones que ya cumplieron
+          90 días. No hay un porcentaje "normal" contra el cual medirlo: unas pocas empresas explican gran parte de la suba del índice, así
+          que la mayoría de las acciones individuales anda peor que él, y elegir al azar suele ganarle menos de la mitad de las veces.
         </p>
       </section>
 
@@ -95,7 +87,8 @@ export function JournalPage() {
       </section>
       <p className="-mt-3 text-xs text-muted">
         Una compra es acierto si a los 90 días el precio subió más de 2%; una venta, si bajó. En un mercado que viene subiendo, esto favorece a
-        las compras: por eso lo principal es "contra el mercado". Una orden que el broker partió en varias cuenta como una decisión.
+        las compras: por eso lo principal es "contra el mercado". Una orden que el broker partió en varias cuenta como una decisión, y solo
+        entran las que ya cumplieron 90 días. Se mide con el dólar que elegiste (MEP o CCL): con el otro, los porcentajes cambian un poco.
       </p>
 
       <Patterns journal={data} />

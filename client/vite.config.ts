@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: Number(process.env.PORT ?? 5173),
     // El frontend le pide /api/... a Vite y Vite se lo pasa al backend
-    proxy: { '/api': process.env.API_URL ?? 'http://localhost:3001' },
+    // 127.0.0.1 y no "localhost": el backend escucha solo en IPv4 de esta compu (ver server/src/index.ts)
+    proxy: { '/api': process.env.API_URL ?? 'http://127.0.0.1:3001' },
   },
 });

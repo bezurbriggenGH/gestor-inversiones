@@ -24,7 +24,7 @@ import {
 export const BENCHMARKS = {
   inflacion: {
     label: 'Inflación',
-    description: 'Mantener el poder de compra (índice UVA, que sigue a la inflación con 1 o 2 meses de retraso)',
+    description: 'Mantener el poder de compra (IPC del INDEC; el mes que todavía no se publicó se estima con el último dato)',
   },
   dolar: { label: 'Dólar MEP', description: 'Haber comprado dólares MEP' },
   plazofijo: { label: 'Plazo fijo', description: 'Plazo fijo a 30 días renovado' },
@@ -50,6 +50,39 @@ function addDaysIso(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+const daysInMonth = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+
+/**
+ * Índice diario de inflación, armado con el IPC mensual del INDEC (el mismo de Sueldo y gastos).
+ * La inflación de cada mes se reparte pareja entre sus días: con 10% en un mes de 31 días, cada día
+ * suma 1,1^(1/31) − 1 ≈ 0,31%. El valor de un día incluye la inflación de ese día.
+ *
+ * Antes se usaba el índice UVA, que sigue al IPC con unos dos meses de atraso: a quien empezó a invertir
+ * en febrero de 2024 le "cobraba" la inflación de diciembre de 2023 y enero de 2024 (25,5% y 20,6%),
+ * cuando esa plata todavía no estaba invertida. De febrero a diciembre de 2024 el UVA subió 134% y el
+ * IPC, 80,5%: con el UVA, una cartera que le ganó a la inflación parecía perder contra ella.
+ *
+ * El IPC de un mes se publica a mediados del siguiente: los días todavía sin publicar se estiman con
+ * la inflación del último mes publicado.
+ */
+export function inflationSeries(today: string = arDate()): DateSeries {
+  const months = all<{ date: string; value: number }>(
+    "SELECT date, value FROM index_values WHERE series = 'ipc' AND date >= '2010-01-01' ORDER BY date",
+  );
+  if (months.length === 0) return new DateSeries([]);
+  const rate = new Map(months.map((m) => [m.date.slice(0, 7), m.value / 100]));
+  const lastMonth = months[months.length - 1].date.slice(0, 7);
+  const rows: { date: string; value: number }[] = [];
+  let value = 1;
+  for (let d = `${months[0].date.slice(0, 7)}-01`; d <= today; d = addDaysIso(d, 1)) {
+    const month = d.slice(0, 7);
+    const r = rate.get(month) ?? (month > lastMonth ? rate.get(lastMonth)! : 0);
+    value *= Math.pow(1 + r, 1 / daysInMonth(month));
+    rows.push({ date: d, value });
+  }
+  return new DateSeries(rows);
 }
 
 /** Índice acumulado de un plazo fijo a 30 días renovado, a partir de la TNA diaria. */
@@ -135,7 +168,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
 
   // Índices de cada benchmark (valor en pesos de 1 unidad)
   const indices: Record<BenchmarkKey, DateSeries> = {
-    inflacion: loadIndex('uva'),
+    inflacion: inflationSeries(today),
     dolar: fx,
     plazofijo: plazoFijoIndex(addDaysIso(start, -1), today),
     merval: loadIndex('merval'),
@@ -247,7 +280,8 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     benchmarks,
     portfolio: { value: last.value, netInvested: last.netInvested, gain: last.value - last.netInvested, irr: irrWithFinal(last.value) },
     realReturn,
-    monthly: monthlyReturns(points),
+    // En pesos, cada mes también descontada la inflación de ese mes (en dólares no hace falta)
+    monthly: monthlyReturns(points, currency === 'ARS' && !inflIdx.empty ? inflIdx : undefined),
   };
 }
 
@@ -256,20 +290,28 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
  * (rendimiento ponderado por tiempo): se encadena el rendimiento de cada día,
  * descontando la plata que entró o salió ese día.
  */
-export function monthlyReturns(points: { date: string; value: number; netInvested: number }[]) {
-  const months: { month: string; return: number; gain: number }[] = [];
+export function monthlyReturns(points: { date: string; value: number; netInvested: number }[], inflation?: DateSeries) {
+  const months: { month: string; return: number; gain: number; inflation: number | null; real: number | null }[] = [];
   let factor = 1;
   let gain = 0;
   let current = '';
+  let from = ''; // desde cuándo se mide el mes: el último día del mes anterior con dato
+  // Con la inflación de los mismos días: real = (1 + rendimiento) ÷ (1 + inflación) − 1.
+  // Ejemplo: +6% en pesos en un mes con 4% de inflación → 1,06 ÷ 1,04 − 1 = +1,9% real.
+  const close = (to: string) => {
+    const infl = inflation ? inflation.at(to) / inflation.at(from) - 1 : null;
+    months.push({ month: current, return: factor - 1, gain, inflation: infl, real: infl == null ? null : factor / (1 + infl) - 1 });
+  };
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     const prev = points[i - 1];
     const month = p.date.slice(0, 7);
     if (month !== current) {
-      if (current) months.push({ month: current, return: factor - 1, gain });
+      if (current) close(prev.date);
       current = month;
       factor = 1;
       gain = 0;
+      from = prev?.date ?? p.date;
     }
     const prevValue = prev?.value ?? 0;
     const flow = p.netInvested - (prev?.netInvested ?? 0);
@@ -283,6 +325,6 @@ export function monthlyReturns(points: { date: string; value: number; netInveste
     factor *= 1 + r;
     gain += p.value - prevValue - flow;
   }
-  if (current) months.push({ month: current, return: factor - 1, gain });
+  if (current) close(points[points.length - 1].date);
   return months;
 }

@@ -75,6 +75,11 @@ export function OperationForm({
   const f = Number(fees) || 0;
   const total = type === 'COMPRA' ? q * p + f : q * p - f;
   const tooMany = isSell && q > holding;
+  // Compras y ventas solo se hacen de lunes a viernes (los dividendos los acredita el broker cualquier día)
+  const weekend = !isDividend && /^\d{4}-\d{2}-\d{2}$/.test(date) && [0, 6].includes(new Date(`${date}T12:00:00Z`).getUTCDay());
+  // Más del doble o menos de la mitad del cierre de ese día: casi seguro un cero de más o de menos
+  const close = closeAt.data?.close ?? 0;
+  const farFromClose = !isDividend && close > 0 && p > 0 && (p > close * 2 || p < close / 2);
 
   return (
     <Modal title={`${editing ? 'Corregir' : 'Registrar'} ${TITLES[type]} de ${ticker}`} onClose={onClose}>
@@ -138,6 +143,13 @@ export function OperationForm({
           <span className="tabular font-semibold">{money(total, 'ARS')}</span>
         </div>
         {tooMany && <p className="text-xs text-down">No podés vender más de lo que tenés.</p>}
+        {/* Avisos que no frenan: puede ser un error de tipeo, pero también algo real */}
+        {weekend && <p className="text-xs text-[#c9ab6a]">Esa fecha cae en fin de semana y BYMA no opera: revisá que sea la del día de la operación.</p>}
+        {farFromClose && (
+          <p className="text-xs text-[#c9ab6a]">
+            El precio está muy lejos del cierre de ese día ({money(closeAt.data!.close, 'ARS')}): revisá que no falte o sobre un cero.
+          </p>
+        )}
 
         {!isDividend && !editing && (
           <details className="rounded-lg border border-line p-3" open>

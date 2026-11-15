@@ -172,6 +172,11 @@ const migrations: string[] = [
     PRIMARY KEY (item_id, month)
   );
   `,
+  // v8: precios por fecha, sin importar el activo. Sirve para saber cuál fue la rueda anterior de BYMA
+  // (el último día con algún precio): sin este índice, cada consulta recorría la tabla entera.
+  `
+  CREATE INDEX prices_by_date ON prices (date);
+  `,
 ];
 
 function migrate() {

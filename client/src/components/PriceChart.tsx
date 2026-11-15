@@ -342,6 +342,10 @@ export function PriceChart({
   const days = RANGES.find((r) => r.label === range)!.days;
   const start = days ? series.find((p) => p.date >= minusDays(last.date, days)) ?? series[0] : series[0];
   const periodChange = last.close / start.close - 1;
+  // Si no hay precios de todo el período (un activo con una semana de historial), se dice desde cuándo:
+  // "−29,60% en 1A" sería la caída de una semana presentada como la de un año
+  const partial = days > 0 && series[0].date > minusDays(last.date, days);
+  const periodLabel = range === 'Todo' ? 'todo el período' : partial ? `desde el ${fmtDate(series[0].date)} (no hay precios de antes)` : range;
   const vsAvg = avgCost > 0 ? shown.close / avgCost - 1 : null;
 
   return (
@@ -352,7 +356,7 @@ export function PriceChart({
           <p className="tabular text-xs text-muted">
             {fmtDate(shown.date)} ·{' '}
             <span className={tone(periodChange)}>
-              {pct(periodChange)} en {range === 'Todo' ? 'todo el período' : range}
+              {pct(periodChange)} {partial ? '' : 'en '}{periodLabel}
             </span>
             {vsAvg != null && (
               <>

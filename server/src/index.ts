@@ -43,8 +43,11 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 cleanAllHistories();
 
 const PORT = Number(process.env.PORT ?? 3001);
-app.listen(PORT, () => {
-  console.log(`API lista en http://localhost:${PORT}`);
+// Solo se aceptan conexiones de esta misma compu: la app es de uso personal. Sin esto, cualquiera en el
+// mismo wifi podría abrirla y probar contraseñas. Para usarla desde otro equipo de la red: HOST=0.0.0.0.
+const HOST = process.env.HOST ?? '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  console.log(`API lista en http://${HOST === '127.0.0.1' ? 'localhost' : HOST}:${PORT}`);
   // Actualiza al arrancar y cada 1 hora mientras el servidor esté prendido.
   // Si estuvo apagado, la primera actualización completa los días que falten.
   const tick = () => {

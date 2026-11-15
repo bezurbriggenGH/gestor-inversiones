@@ -159,7 +159,7 @@ export function BenchmarkPage() {
 
       <p className="text-xs text-muted">
         Lo que sacaste con ventas y dividendos se descuenta igual en todas las alternativas, así que "Hoy tendrías" compara solo
-        lo que sigue invertido. Inflación: índice UVA (sigue al CER). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
+        lo que sigue invertido. Inflación: IPC del INDEC, repartido parejo dentro de cada mes (el mes que todavía no se publicó se estima con el último dato). Plazo fijo: tasa promedio de depósitos a 30 días, renovado cada mes. Merval y S&amp;P 500: precio del
         índice y del CEDEAR SPY, sin dividendos (tu cartera sí los cuenta, así que contra esos dos la comparación te favorece un poco).
         A cada alternativa le llega toda la plata que pusiste, comisiones incluidas, y no paga comisiones (eso te juega en contra). Fuentes: ArgentinaDatos y Yahoo Finance. {currency === 'USD' && 'En dólares, cada valor se convierte con el dólar de su fecha.'}
       </p>

@@ -86,6 +86,17 @@ describe('Fechas', () => {
     assert.equal((await add({ date: '2099-01-01' })).status, 400);
   });
 
+  test('rechaza una fecha anterior a las cotizaciones del dólar (01/01/1900 desarmaba la TIR)', async () => {
+    // El MEP guardado arranca el 29/10/2018 y el CCL el 02/01/2013: se toma el más tardío
+    run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', '2018-10-29', 60), ('contadoconliqui', '2013-01-02', 8)");
+    for (const date of ['1900-01-01', '2017-05-02', '2018-10-28']) {
+      const r = await add({ date });
+      assert.equal(r.status, 400, date);
+      assert.match(r.error!, /cotizaciones del dólar desde el 29\/10\/2018/);
+    }
+    run("DELETE FROM fx_rates WHERE date IN ('2018-10-29', '2013-01-02')");
+  });
+
   test('rechaza una fecha que no existe (30 de febrero)', async () => {
     assert.equal((await add({ date: '2025-02-30' })).status, 400);
   });
@@ -200,7 +211,9 @@ describe('Importar un archivo: las mismas reglas que al cargar a mano', () => {
     const r = await call('POST', '/import', { csv, commit: false });
     assert.equal(r.status, 200);
     const filas = r.body.rows as { status: string; errors: string[] }[];
-    assert.deepEqual(filas.map((f) => f.status), ['ok', 'error', 'error', 'error', 'error', 'error']);
+    assert.deepEqual(filas.map((f) => f.status), ['error', 'error', 'error', 'error', 'error', 'error']);
+    // La primera está bien, pero no entra sola: las demás de AAA fallaron
+    assert.match(filas[0].errors.join(), /otra fila de AAA tiene un error/);
     assert.match(filas[1].errors.join(), /fecha inválida/);
     assert.match(filas[2].errors.join(), /fecha inválida/);
     assert.match(filas[3].errors.join(), /entero/);
@@ -208,12 +221,30 @@ describe('Importar un archivo: las mismas reglas que al cargar a mano', () => {
     assert.match(filas[5].errors.join(), /precio/);
   });
 
-  test('al confirmar se importa solo la fila buena: quedan 10 acciones, no 15,5', async () => {
+  test('al confirmar no se importa nada de AAA: una parte sola dejaría una tenencia distinta a la del broker', async () => {
     const r = await call('POST', '/import', { csv, commit: true });
+    assert.equal(r.body.summary.ok, 0);
+    const detalle = await call('GET', '/assets/AAA?currency=ARS&fx=bolsa');
+    assert.equal(detalle.body.position.quantity, 0);
+  });
+
+  test('con el archivo corregido entra todo: quedan 10 acciones', async () => {
+    const r = await call('POST', '/import', { csv: csv.split('\n').slice(0, 2).join('\n'), commit: true });
     assert.equal(r.body.summary.ok, 1);
     const detalle = await call('GET', '/assets/AAA?currency=ARS&fx=bolsa');
     assert.equal(detalle.body.position.quantity, 10);
     assert.deepEqual(detalle.body.operations.map((o: { date: string }) => o.date), ['2025-01-02']);
+  });
+
+  test('un dividendo de una época en que no tenías el activo se rechaza, igual que a mano (y frena el resto de ese activo)', async () => {
+    // AAA se compró el 02/01/2025: un dividendo del 01/12/2024 es imposible
+    const r = await call('POST', '/import', {
+      csv: ['Fecha;Tipo;Ticker;Cantidad;Precio;Comision', '01/12/2024;Dividendo;AAA;1;50;0', '03/01/2025;Compra;AAA;1;100;0'].join('\n'),
+      commit: false,
+    });
+    const filas = r.body.rows as { status: string; errors: string[] }[];
+    assert.match(filas[0].errors.join(), /no pudiste cobrar ese dividendo/);
+    assert.match(filas[1].errors.join(), /otra fila de AAA/);
   });
 });
 

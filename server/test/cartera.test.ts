@@ -3,6 +3,7 @@
 import { close, near, op, pesos } from './helpers.ts';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { run } from '../src/db.ts';
 import {
   DateSeries,
   assertNoShortSelling,
@@ -10,6 +11,7 @@ import {
   holdingBefore,
   makeConverter,
   peakCapital,
+  previousSession,
   unregisteredDividends,
 } from '../src/services/portfolio.ts';
 
@@ -153,6 +155,26 @@ describe('Ganancias', () => {
     assert.equal(p.dayChangePct, 0);
     assert.equal(p.dayKnown, false); // la pantalla dice "sin dato", no 0%
     assert.equal(p.marketValue, 1312 * 206.75); // el valor sí usa el último precio
+  });
+
+  test('Semana Santa 2024: del 27/03 al 03/04 pasaron 7 días, pero era la rueda anterior: la variación cuenta', () => {
+    // Con la rueda anterior de BYMA (el último día con algún precio) se saben los feriados sin una lista
+    const p = computePosition([op('COMPRA', '2024-01-01', 10, 90)], close('2024-04-03', 110), close('2024-03-27', 100), pesos, '2024-03-27').position;
+    assert.equal(p.dayKnown, true);
+    assert.equal(p.dayChange, 100);
+  });
+
+  test('si otros activos operaron el 12/11 y este tiene precio anterior del 06/11, no se sabe la variación del 13/11', () => {
+    const p = computePosition([op('COMPRA', '2026-06-02', 10, 500)], close('2026-11-13', 206.75), close('2026-11-06', 295), pesos, '2026-11-12').position;
+    assert.equal(p.dayKnown, false);
+    assert.equal(p.dayChange, 0);
+  });
+
+  test('la rueda anterior sale de los precios guardados de todos los activos', () => {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('RUE', 'RUE.BA', 'Prueba', 'ACCION')");
+    for (const d of ['2024-03-26', '2024-03-27', '2024-04-03']) run("INSERT INTO prices (ticker, date, close) VALUES ('RUE', ?, 1)", d);
+    assert.equal(previousSession('2024-04-03'), '2024-03-27');
+    assert.equal(previousSession('2024-03-27'), '2024-03-26');
   });
 
   test('acertijo de la vaca: compro a 2.000, vendo a 2.200, recompro a 2.300, vendo a 2.500 → gané 400', () => {

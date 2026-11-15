@@ -7,7 +7,7 @@ import { all, get } from '../db.ts';
 import type { FxKind } from '../providers/dolar.ts';
 import { HttpError, arDate } from '../util.ts';
 import { DEFAULT_WITHHOLDING, DateSeries, dividendEvents, loadFx, type Currency } from './portfolio.ts';
-import { loadIndex, plazoFijoIndex } from './history.ts';
+import { inflationSeries, plazoFijoIndex } from './history.ts';
 
 export const ALTERNATIVES = {
   activo: 'El activo',
@@ -37,7 +37,7 @@ export function simulate(ticker: string, amount: number, date: string, currency:
 
   const fx = loadFx(kind);
   if (fx.empty) throw new HttpError(503, 'Todavía no hay cotizaciones del dólar');
-  const uva = loadIndex('uva');
+  const inflation = inflationSeries();
   const pf = plazoFijoIndex(start.date, arDate());
 
   // Dividendos cobrados en el camino, sin reinvertir y netos de la retención habitual (30% en CEDEARs,
@@ -51,17 +51,24 @@ export function simulate(ticker: string, amount: number, date: string, currency:
   const toCur = (ars: number, d: string) => (currency === 'ARS' ? ars : ars / fx.at(d));
   const grow = (s: DateSeries, d: string) => (s.empty ? null : (amount * s.at(d)) / s.at(start.date));
 
+  // Los dividendos se guardan en la moneda elegida desde el día en que se cobran: en dólares, cada uno
+  // con el dólar de ese día (como en tu cartera). Antes se pasaban con el dólar de cada día posterior,
+  // como si los pesos cobrados se hubieran quedado en pesos.
   const points = days.map((r) => {
-    while (divIdx < dividends.length && dividends[divIdx].date <= r.date) cash += units * dividends[divIdx++].amount * keep;
+    while (divIdx < dividends.length && dividends[divIdx].date <= r.date) {
+      const d = dividends[divIdx++];
+      cash += toCur(units * d.amount * keep, d.date);
+    }
     const values: Record<Alt, number | null> = {
-      activo: units * r.close + cash,
+      activo: units * r.close,
       dolar: grow(fx, r.date),
       plazofijo: grow(pf, r.date),
-      inflacion: grow(uva, r.date),
+      inflacion: grow(inflation, r.date),
       colchon: amount,
     };
     const conv = {} as Record<Alt, number | null>;
     for (const k of Object.keys(values) as Alt[]) conv[k] = values[k] == null ? null : toCur(values[k]!, r.date);
+    conv.activo! += cash; // ya está en la moneda elegida
     return { date: r.date, ...conv };
   });
 
@@ -106,7 +113,7 @@ export function simulate(ticker: string, amount: number, date: string, currency:
     units,
     endDate: last.date,
     years,
-    dividendsCash: toCur(cash, last.date),
+    dividendsCash: cash, // ya en la moneda elegida, cada dividendo con el dólar de su día
     results,
     worst,
     best,

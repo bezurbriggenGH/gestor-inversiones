@@ -5,7 +5,7 @@ import { db, all, get, run, tx } from '../db.ts';
 import { fetchChart, fetchProfile, type Bar, type Dividend, type Split } from '../providers/yahoo.ts';
 import { inCatalog, translateSector } from './exposure.ts';
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
-import { fetchDepositRate, fetchIpc, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
+import { fetchDepositRate, fetchIpc, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
 import { cleanHistory } from './clean.ts';
 import { addDays, arDate, lastMarketTime } from '../util.ts';
@@ -283,8 +283,8 @@ export function syncIndices(force = false): Promise<void> {
       ['merval', () => fetchYahooSeries('^MERV', since('merval'))],
       ['spy', () => fetchYahooSeries('SPY.BA', since('spy'))],
     ];
-    // UVA y plazo fijo se publican una vez por día y la fuente solo da el historial completo
-    for (const [name, fn] of [['uva', fetchUva], ['plazofijo', fetchDepositRate]] as const) {
+    // Inflación (IPC mensual) y plazo fijo: la fuente solo da el historial completo; una vez por día alcanza
+    for (const [name, fn] of [['ipc', fetchIpc], ['plazofijo', fetchDepositRate]] as const) {
       if (force || stale(`index-full:${name}`, DAILY_TTL_MS)) jobs.push([name, fn]);
     }
     const results = await Promise.allSettled(
@@ -342,8 +342,8 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
 }
 
 /**
- * Inflación mensual oficial (para Sueldo y gastos). Va aparte de los índices de la Comparativa:
- * se baja una vez por día y solo cuando se abre esa pantalla.
+ * Inflación mensual oficial, sola (Sueldo y gastos no necesita el resto de los índices).
+ * Es la misma serie que usa la Comparativa: se baja como mucho una vez por día.
  */
 export function syncIpc(force = false): Promise<void> {
   return once('ipc', async () => {

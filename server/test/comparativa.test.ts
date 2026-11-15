@@ -6,10 +6,10 @@ import { run } from '../src/db.ts';
 import { buildHistory } from '../src/services/history.ts';
 import { simulate } from '../src/services/simulator.ts';
 
-// Precios y dólar planos, e inflación en cero (UVA siempre 1): las cuentas se sacan a mano
+// Precios y dólar planos, e inflación en cero (IPC de 0% desde diciembre de 2024): las cuentas se sacan a mano
+run("INSERT INTO index_values (series, date, value) VALUES ('ipc', '2024-12-31', 0)");
 for (const date of ['2025-01-02', '2025-03-03', '2025-06-02', '2025-07-01']) {
   run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, 1000)", date);
-  run("INSERT INTO index_values (series, date, value) VALUES ('uva', ?, 1)", date);
 }
 
 describe('Vendiste mucho más de lo que pusiste', () => {
@@ -54,5 +54,23 @@ describe('Simulador: dividendos netos de la retención', () => {
     assert.ok(Math.abs(sim.dividendsCash - 93) < 1e-9);
     const activo = sim.results.find((r) => r.key === 'activo')!;
     assert.ok(activo.available && Math.abs(activo.value - 1093) < 1e-9);
+  });
+});
+
+describe('Simulador en dólares: cada dividendo con el dólar del día en que se cobró', () => {
+  // $1.000 → 10 acciones a $100. El 02/03/2026 cobra $93 netos con el dólar a $1.000 (US$ 0,093).
+  // Después el dólar pasa a $2.000. Antes los $93 se pasaban con el dólar del final: US$ 0,0465.
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SIU', 'SIU.BA', 'Simulada', 'ACCION')");
+  for (const [date, usd] of [['2026-01-02', 1000], ['2026-03-02', 1000], ['2026-06-01', 2000]] as const) {
+    run("INSERT INTO prices (ticker, date, close) VALUES ('SIU', ?, 100)", date);
+    run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, ?)", date, usd);
+  }
+  run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('SIU', '2026-03-02', 10)");
+
+  test('US$ 0,093 de dividendos, no US$ 0,0465; el activo termina en US$ 0,50 + 0,093', () => {
+    const sim = simulate('SIU', 1000, '2026-01-02', 'USD', 'bolsa');
+    assert.ok(Math.abs(sim.dividendsCash - 0.093) < 1e-9);
+    const activo = sim.results.find((r) => r.key === 'activo')!;
+    assert.ok(activo.available && Math.abs(activo.value - (10 * 100) / 2000 - 0.093) < 1e-9);
   });
 });

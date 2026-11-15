@@ -10,6 +10,9 @@ function cellStyle(r: number) {
   return { background: r >= 0 ? `rgba(79,157,105,${alpha})` : `rgba(194,84,80,${alpha})` };
 }
 
+/** Lo que muestra cada casillero: en pesos, descontada la inflación; en dólares, tal cual. */
+export const monthValue = (m: History['monthly'][number]) => m.real ?? m.return;
+
 const short = (r: number) => `${r > 0 ? '+' : ''}${(r * 100).toFixed(1).replace('.', ',')}%`;
 
 /** Calendario de rendimientos: un casillero por mes, verde si ganaste y rojo si perdiste. */
@@ -23,9 +26,10 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
   }
   const years = [...byYear.keys()].sort().reverse();
 
-  const best = months.reduce((a, b) => (b.return > a.return ? b : a));
-  const worst = months.reduce((a, b) => (b.return < a.return ? b : a));
-  const positive = months.filter((m) => m.return > 0).length;
+  const real = months.some((m) => m.real != null);
+  const best = months.reduce((a, b) => (monthValue(b) > monthValue(a) ? b : a));
+  const worst = months.reduce((a, b) => (monthValue(b) < monthValue(a) ? b : a));
+  const positive = months.filter((m) => monthValue(m) > 0).length;
   const label = (month: string) => {
     const [y, mm] = month.split('-');
     return `${MONTHS[Number(mm) - 1]} ${y}`;
@@ -36,8 +40,8 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-medium">Rendimiento mes a mes</h2>
         <p className="tabular text-sm text-muted">
-          {positive} de {months.length} meses en positivo · mejor {label(best.month)} <span className={best.return >= 0 ? 'text-up' : 'text-down'}>{short(best.return)}</span> · peor{' '}
-          {label(worst.month)} <span className={worst.return >= 0 ? 'text-up' : 'text-down'}>{short(worst.return)}</span>
+          {positive} de {months.length} meses en positivo · mejor {label(best.month)} <span className={monthValue(best) >= 0 ? 'text-up' : 'text-down'}>{short(monthValue(best))}</span> · peor{' '}
+          {label(worst.month)} <span className={monthValue(worst) >= 0 ? 'text-up' : 'text-down'}>{short(monthValue(worst))}</span>
         </p>
       </div>
 
@@ -57,7 +61,7 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
           <tbody>
             {years.map((y) => {
               const row = byYear.get(y)!;
-              const yearReturn = [...row.values()].reduce((f, m) => f * (1 + m.return), 1) - 1;
+              const yearReturn = [...row.values()].reduce((f, m) => f * (1 + monthValue(m)), 1) - 1;
               return (
                 <tr key={y}>
                   <td className="text-left text-muted">{y}</td>
@@ -67,10 +71,14 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
                       <td
                         key={i}
                         className="rounded-md py-2"
-                        style={cellStyle(m.return)}
-                        title={`${label(m.month)}: ${pct(m.return)} · ${money(m.gain, currency, true)}`}
+                        style={cellStyle(monthValue(m))}
+                        title={
+                          m.real != null
+                            ? `${label(m.month)}: ${pct(m.real)} descontada la inflación (en pesos ${pct(m.return)}, inflación ${pct(m.inflation!)}) · ${money(m.gain, currency, true)}`
+                            : `${label(m.month)}: ${pct(m.return)} · ${money(m.gain, currency, true)}`
+                        }
                       >
-                        {short(m.return)}
+                        {short(monthValue(m))}
                       </td>
                     ) : (
                       <td key={i} className="rounded-md bg-card/40 py-2 text-muted/40">
@@ -89,8 +97,16 @@ export function MonthlyReturns({ months }: { months: History['monthly'] }) {
       </div>
 
       <p className="mt-2 text-xs text-muted">
-        Rendimiento de la cartera en cada mes, en {currency === 'ARS' ? 'pesos' : 'dólares'}, sin contar la plata que agregaste o sacaste (así
-        un mes con muchas compras no parece un mes de ganancias). Pasá el mouse por un mes para ver el monto.
+        Rendimiento de la cartera en cada mes, en {currency === 'ARS' ? 'pesos' : 'dólares'}, sin contar la plata que agregaste o sacaste
+        (así un mes con muchas compras no parece un mes de ganancias).
+        {real && ' Se descuenta la inflación de ese mes (IPC): con 4% de inflación, un mes de +4% en pesos es quedarse igual.'} Pasá el mouse
+        por un mes para ver el detalle.
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        ¿Por qué el año de acá no coincide con el rendimiento por año de arriba? Miden cosas distintas, y las dos están bien. Arriba (la TIR)
+        se mide tu plata: pesan más los meses en que tenías más puesto. Acá cada mes pesa igual, tengas mucho o poco: mide qué tan buenas
+        fueron tus elecciones. Si pusiste mucha plata justo antes de meses malos, arriba da menos que acá; si la pusiste antes de meses
+        buenos, arriba da más.
       </p>
     </section>
   );

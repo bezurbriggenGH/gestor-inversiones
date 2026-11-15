@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { DateSeries, computePosition, convertOp } from '../src/services/portfolio.ts';
-import { buildJournal, decisionOf, differsFromChance, realDifference } from '../src/services/journal.ts';
+import { buildJournal, decisionOf, realDifference, robustDifference, type JudgedDecision } from '../src/services/journal.ts';
 
 describe('Resultado de cada venta', () => {
   test('el % se calcula sobre lo que habían costado las acciones vendidas', () => {
@@ -116,7 +116,7 @@ describe('Diario de decisiones: contra el mercado', () => {
     const venta = j.entries.find((e) => e.type === 'VENTA')!;
     assert.equal(venta.verdict, 'ERROR'); // el precio subió después de vender
     assert.equal(venta.market!.beat, true); // pero el mercado subió más: salir no fue peor que el índice
-    assert.deepEqual(j.vsMarket, { compared: 2, beat: 1, differsFromChance: false }); // con 2 decisiones no se saca conclusión
+    assert.deepEqual(j.vsMarket, { compared: 2, beat: 1, even: 0 });
   });
 
   test('el gráfico del activo recibe la misma comparación', () => {
@@ -124,6 +124,19 @@ describe('Diario de decisiones: contra el mercado', () => {
     const d = decisionOf(compra);
     assert.equal(d.market!.label, 'S&P 500');
     assert.equal(d.market!.beat, false);
+  });
+
+  test('a menos de 2% del mercado es un empate: no cuenta como victoria ni como derrota', () => {
+    // Otro CEDEAR que en los mismos 90 días sube 9%: contra el 10% del S&P 500, 1,09 / 1,10 − 1 = −0,9%
+    run("INSERT INTO users (id, name, email, password_hash) VALUES (5, 'Empate', 'empate@test.com', 'x')");
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('EMP', 'EMP.BA', 'Prueba', 'CEDEAR')");
+    run("INSERT INTO prices (ticker, date, close) VALUES ('EMP', '2025-07-01', 1000), ('EMP', '2025-09-29', 1090)");
+    run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (5, 'EMP', 'COMPRA', '2025-07-01', 10, 1000)");
+    const j = buildJournal(5, 'ARS', 'bolsa');
+    assert.equal(j.entries[0].verdict, 'ACIERTO'); // subió 9%
+    assert.ok(near(j.entries[0].market!.relative, 1.09 / 1.1 - 1));
+    assert.equal(j.entries[0].market!.beat, null);
+    assert.deepEqual(j.vsMarket, { compared: 0, beat: 0, even: 1 });
   });
 
   test('sin datos del índice en esas fechas no se compara (las acciones contra un Merval vacío)', () => {
@@ -191,18 +204,30 @@ describe('¿Una diferencia entre dos porcentajes puede ser casualidad?', () => {
   });
 });
 
-describe('¿Contra el mercado, mejor que elegir al azar?', () => {
-  test('127 de 272 (46,7%) no se distingue de tirar una moneda', () => {
-    // Por suerte varía √(0,25 ÷ 272) ≈ 3 puntos; 46,7% está a 3,3 de 50%: 1,1 veces, menos de 1,96
-    assert.equal(differsFromChance(127, 272), false);
+describe('Una diferencia que depende de un solo activo no se afirma', () => {
+  // n decisiones de un activo, con h aciertos
+  const of = (ticker: string, n: number, h: number): JudgedDecision[] =>
+    Array.from({ length: n }, (_, i) => ({ ticker, hit: i < h }));
+
+  test('acciones 32 de 87 contra CEDEARs 84 de 168: pasa la prueba simple, pero 31 de las 87 son de COME', () => {
+    // COME: 31 decisiones, 5 aciertos. El resto de las acciones: 27 de 56 (48%), repartidas en 8 activos
+    const acciones = [...of('COME', 31, 5), ...Array.from({ length: 8 }, (_, k) => of(`A${k}`, 7, k < 3 ? 4 : 3)).flat()];
+    const cedears = Array.from({ length: 12 }, (_, k) => of(`C${k}`, 14, 7)).flat(); // 84 de 168
+    assert.equal(acciones.length, 87);
+    assert.equal(acciones.filter((d) => d.hit).length, 32);
+    assert.equal(realDifference({ hits: 32, judged: 87 }, { hits: 84, judged: 168 }), true); // 2,01 veces: pasa 1,96
+    // Sin COME: 27 de 56 contra 84 de 168 → nada. Además, con 3 comparaciones se pide 2,39 y no llega
+    assert.equal(robustDifference(acciones, cedears), false);
   });
 
-  test('170 de 272 (62,5%) sí: 12,5 puntos son 4,1 veces lo que varía por suerte', () => {
-    assert.equal(differsFromChance(170, 272), true);
-    assert.equal(differsFromChance(102, 272), true); // 37,5%: peor que el azar, y también es real
+  test('una diferencia grande y repartida en muchos activos sí se afirma', () => {
+    // 60 de 100 en 20 activos (3 de 5 cada uno) contra 20 de 100 en otros 20 (1 de 5 cada uno)
+    const a = Array.from({ length: 20 }, (_, k) => of(`A${k}`, 5, 3)).flat();
+    const b = Array.from({ length: 20 }, (_, k) => of(`B${k}`, 5, 1)).flat();
+    assert.equal(robustDifference(a, b), true);
   });
 
-  test('con menos de 10 decisiones no se saca conclusión (9 de 9 tampoco)', () => {
-    assert.equal(differsFromChance(9, 9), false);
+  test('con 3 comparaciones a la vez se pide más: 2,01 veces alcanza para una sola, no para tres', () => {
+    assert.equal(realDifference({ hits: 32, judged: 87 }, { hits: 84, judged: 168 }, 2.39), false);
   });
 });

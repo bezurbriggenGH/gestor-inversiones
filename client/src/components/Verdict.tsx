@@ -49,7 +49,8 @@ export function marketText({ type, market: m, days }: MarketInfo): string | null
   if (!m || days == null) return null;
   const moved = `${m.change >= 0 ? 'subió' : 'bajó'} ${pct(Math.abs(m.change)).replace('+', '')}`;
   const start = `El ${m.label} ${moved} en esos ${days} días`;
-  if (Math.abs(m.relative) < 0.00005) return `${start}: ${type === 'COMPRA' ? 'tu compra' : 'lo que vendiste'} anduvo igual que el mercado.`;
+  // Menos de 2% de diferencia: empate (la misma zona neutral que el veredicto)
+  if (m.beat == null) return `${start}: ${type === 'COMPRA' ? 'tu compra' : 'lo que vendiste'} anduvo casi igual que el mercado (empate).`;
   const diff = pct(Math.abs(m.relative)).replace('+', '');
   const how =
     type === 'COMPRA'
@@ -66,7 +67,8 @@ export function marketText({ type, market: m, days }: MarketInfo): string | null
 export function MarketLine({ className = 'text-xs', ...info }: MarketInfo & { className?: string }) {
   const text = marketText(info);
   if (!text) return null;
-  return <p className={`${className} ${info.market!.beat ? 'text-up' : 'text-down'}`}>{text}</p>;
+  const beat = info.market!.beat;
+  return <p className={`${className} ${beat == null ? 'text-muted' : beat ? 'text-up' : 'text-down'}`}>{text}</p>;
 }
 
 /** Ya pasó el plazo para evaluarla, pero no hay precios guardados de esa época. */

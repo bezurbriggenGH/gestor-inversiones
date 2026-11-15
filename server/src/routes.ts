@@ -246,6 +246,18 @@ export function amountsProblem(type: OpType, quantity: number, price: number, fe
   return null;
 }
 
+/**
+ * Una operación anterior a las cotizaciones del dólar guardadas no se puede pasar a dólares: se usaría el
+ * primer dólar que hay, años después (con una de 2017, el MEP de octubre de 2018, más o menos el doble).
+ * Y una fecha como 01/01/1900 desarma la TIR y el calendario. Mientras no haya cotizaciones guardadas
+ * (la primera vez que se usa la app) no se controla.
+ */
+function tooOldProblem(date: string): string | null {
+  const first = get<{ d: string | null }>('SELECT MAX(first) AS d FROM (SELECT MIN(date) AS first FROM fx_rates GROUP BY kind)')?.d;
+  if (!first || date >= first) return null;
+  return `La app tiene cotizaciones del dólar desde el ${first.split('-').reverse().join('/')}: no puede registrar operaciones anteriores (no las podría pasar a dólares)`;
+}
+
 /** Lo máximo que tuviste en los 90 días anteriores al pago de un dividendo. */
 function maxHoldingBeforeDividend(ops: OperationRow[], div: OperationRow): number {
   const from = addDays(div.date, -DIVIDEND_WINDOW_DAYS).toISOString().slice(0, 10);
@@ -288,6 +300,8 @@ function readAmounts(type: OpType, b: Record<string, unknown>) {
   const date = String(b.date ?? '');
   if (!isRealDate(date)) throw new HttpError(400, 'Fecha inválida');
   if (date > arDate()) throw new HttpError(400, 'La fecha no puede ser futura');
+  const tooOld = tooOldProblem(date);
+  if (tooOld) throw new HttpError(400, tooOld);
   const quantity = Number(b.quantity);
   const price = Number(b.price);
   const fees = b.fees === '' || b.fees == null ? 0 : Number(b.fees);
@@ -581,6 +595,8 @@ router.post('/import', async (req, res) => {
       r.errors.push(`no se pudo consultar Yahoo Finance para verificar ${r.ticker}: revisá la conexión y probá de nuevo`);
     }
     if (r.date && r.date > today) r.errors.push('fecha futura');
+    const tooOld = r.date ? tooOldProblem(r.date) : null;
+    if (tooOld) r.errors.push(tooOld.charAt(0).toLowerCase() + tooOld.slice(1));
     // Las mismas reglas que al cargar a mano (después de pasar a pesos los dividendos en dólares)
     if (!r.ignored && !r.errors.length && r.type && r.quantity != null && r.price != null) {
       const problem = amountsProblem(r.type, r.quantity, r.price, r.fees);
@@ -617,11 +633,32 @@ router.post('/import', async (req, res) => {
       note_link: null,
       created_at: '',
     }));
+    const adjusted = adjustOperations([...(existingByTicker.get(t) ?? []), ...drafts]);
     try {
-      assertNoShortSelling(adjustOperations([...(existingByTicker.get(t) ?? []), ...drafts]), t);
+      assertNoShortSelling(adjusted, t);
     } catch (err) {
-      // Se marcan solo las ventas: las compras de ese ticker se pueden importar igual
       for (const r of newOps) if (r.type === 'VENTA') r.errors.push(err instanceof Error ? err.message : 'ventas sin respaldo');
+      continue;
+    }
+    // Dividendos: el mismo control que al cargarlos a mano (tenías el activo cerca de esa fecha)
+    drafts.forEach((d, i) => {
+      if (d.type !== 'DIVIDENDO') return;
+      try {
+        assertPossibleDividend(adjusted, adjusted.find((o) => o.id === d.id)!, t);
+      } catch (err) {
+        newOps[i].errors.push(err instanceof Error ? err.message : 'dividendo imposible');
+      }
+    });
+  }
+
+  // Si una fila de un activo tiene un error, no se importa ninguna de ese activo: si entraran las demás
+  // solas, la tenencia quedaría distinta a la del broker (por ejemplo, una venta rechazada porque faltaba
+  // una compra vieja dejaría más acciones de las que tenés). Se corrige esa fila y se vuelve a importar:
+  // lo ya importado sale como duplicado.
+  const failed = new Set(rows.filter((r) => r.errors.length && r.ticker && !r.ignored).map((r) => r.ticker!));
+  for (const r of rows) {
+    if (r.ticker && failed.has(r.ticker) && !r.errors.length && r.status === 'ok') {
+      r.errors.push(`no se importa porque otra fila de ${r.ticker} tiene un error: sola, te dejaría una tenencia distinta a la del broker. Corregí esa fila y volvé a importar el archivo.`);
     }
   }
 
