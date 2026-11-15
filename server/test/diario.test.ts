@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { DateSeries, computePosition, convertOp } from '../src/services/portfolio.ts';
-import { buildJournal, decisionOf } from '../src/services/journal.ts';
+import { buildJournal, decisionOf, differsFromChance, realDifference } from '../src/services/journal.ts';
 
 describe('Resultado de cada venta', () => {
   test('el % se calcula sobre lo que habían costado las acciones vendidas', () => {
@@ -116,7 +116,7 @@ describe('Diario de decisiones: contra el mercado', () => {
     const venta = j.entries.find((e) => e.type === 'VENTA')!;
     assert.equal(venta.verdict, 'ERROR'); // el precio subió después de vender
     assert.equal(venta.market!.beat, true); // pero el mercado subió más: salir no fue peor que el índice
-    assert.deepEqual(j.vsMarket, { compared: 2, beat: 1 });
+    assert.deepEqual(j.vsMarket, { compared: 2, beat: 1, differsFromChance: false }); // con 2 decisiones no se saca conclusión
   });
 
   test('el gráfico del activo recibe la misma comparación', () => {
@@ -129,5 +129,80 @@ describe('Diario de decisiones: contra el mercado', () => {
   test('sin datos del índice en esas fechas no se compara (las acciones contra un Merval vacío)', () => {
     const [entry] = buildJournal(1, 'ARS', 'bolsa').entries;
     assert.equal(entry.market, null);
+  });
+});
+
+describe('Diario de decisiones: cuántas decisiones hay de verdad', () => {
+  // Compro 10 a $1.000 con el dólar a $1.000 (US$ 1 cada una). El broker parte la venta en dos
+  // pedazos de 5 el mismo día, a $1.200 con el dólar a $1.300 (US$ 0,923 cada una).
+  run("INSERT INTO users (id, name, email, password_hash) VALUES (4, 'Partida', 'partida@test.com', 'x')");
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('PAR', 'PAR.BA', 'Prueba', 'ACCION')");
+  for (const [date, px, usd] of [
+    ['2026-01-02', 1000, 1000],
+    ['2026-04-02', 1200, 1300],
+  ] as const) {
+    run("INSERT INTO prices (ticker, date, close) VALUES ('PAR', ?, ?)", date, px);
+    run("INSERT INTO fx_rates (kind, date, sell) VALUES ('bolsa', ?, ?)", date, usd);
+  }
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (4, 'PAR', 'COMPRA', '2026-01-02', 10, 1000)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (4, 'PAR', 'VENTA', '2026-04-02', 5, 1200)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (4, 'PAR', 'VENTA', '2026-04-02', 5, 1200)");
+
+  test('una venta partida en dos pedazos el mismo día es una sola decisión', () => {
+    const j = buildJournal(4, 'ARS', 'bolsa');
+    assert.equal(j.entries.length, 3); // en la lista se ven los tres movimientos
+    assert.equal(j.stats.sells.total, 1); // pero en los porcentajes, la venta cuenta una vez
+    assert.equal(j.stats.all.total, 2);
+  });
+
+  test('las ventas con ganancia se cuentan en dólares, aunque estés viendo en pesos', () => {
+    for (const currency of ['ARS', 'USD'] as const) {
+      const { closed } = buildJournal(4, currency, 'bolsa');
+      // En pesos ganaste 10 × $200 = $2.000; en dólares perdiste 10 × (US$ 1 − 1.200/1.300) = US$ 0,77
+      assert.equal(closed.currency, 'USD');
+      assert.equal(closed.wins, 0);
+      assert.equal(closed.losses, 1);
+      assert.ok(near(closed.lost, 10 * (1 - 1200 / 1300)));
+    }
+  });
+});
+
+describe('¿Una diferencia entre dos porcentajes puede ser casualidad?', () => {
+  test('44% en 198 compras contra 51% en 76 ventas: puede ser casualidad', () => {
+    // Diferencia 7,4 puntos; por suerte varía unos 6,7 → 1,1 veces, menos de 1,96
+    assert.equal(realDifference({ hits: 87, judged: 198 }, { hits: 39, judged: 76 }), false);
+  });
+
+  test('50% en 200 contra 20% en 100: es real', () => {
+    // En total 40%; por suerte varía √(0,4 × 0,6 × (1/200 + 1/100)) = 6 puntos. La diferencia es 30: 5 veces
+    assert.equal(realDifference({ hits: 100, judged: 200 }, { hits: 20, judged: 100 }), true);
+  });
+
+  test('con 100 de cada lado, hacen falta unos 14 puntos', () => {
+    // 60% contra 46%: 14 puntos, 1,98 veces lo que varía por suerte (7,06) → real
+    assert.equal(realDifference({ hits: 60, judged: 100 }, { hits: 46, judged: 100 }), true);
+    // 59% contra 46%: 13 puntos, 1,84 veces (7,06) → puede ser casualidad
+    assert.equal(realDifference({ hits: 59, judged: 100 }, { hits: 46, judged: 100 }), false);
+  });
+
+  test('con menos de 10 decisiones de un lado no se saca conclusión (3 de 4 no prueba nada)', () => {
+    assert.equal(realDifference({ hits: 3, judged: 4 }, { hits: 20, judged: 100 }), false);
+    assert.equal(realDifference({ hits: 9, judged: 9 }, { hits: 0, judged: 100 }), false);
+  });
+});
+
+describe('¿Contra el mercado, mejor que elegir al azar?', () => {
+  test('127 de 272 (46,7%) no se distingue de tirar una moneda', () => {
+    // Por suerte varía √(0,25 ÷ 272) ≈ 3 puntos; 46,7% está a 3,3 de 50%: 1,1 veces, menos de 1,96
+    assert.equal(differsFromChance(127, 272), false);
+  });
+
+  test('170 de 272 (62,5%) sí: 12,5 puntos son 4,1 veces lo que varía por suerte', () => {
+    assert.equal(differsFromChance(170, 272), true);
+    assert.equal(differsFromChance(102, 272), true); // 37,5%: peor que el azar, y también es real
+  });
+
+  test('con menos de 10 decisiones no se saca conclusión (9 de 9 tampoco)', () => {
+    assert.equal(differsFromChance(9, 9), false);
   });
 });

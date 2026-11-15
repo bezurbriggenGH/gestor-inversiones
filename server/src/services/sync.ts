@@ -8,7 +8,7 @@ import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } fro
 import { fetchDepositRate, fetchIpc, fetchUva, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
 import { cleanHistory } from './clean.ts';
-import { addDays, lastMarketTime } from '../util.ts';
+import { addDays, arDate, lastMarketTime } from '../util.ts';
 import { usSymbolOf } from '../cedears.ts';
 import { adjustForSplits } from './portfolio.ts';
 
@@ -32,16 +32,29 @@ function stale(key: string, ttl: number): boolean {
   return !last || Date.now() - last > ttl;
 }
 
+// Si al consultar después del cierre Yahoo todavía no tenía el precio de esa rueda (pasa con algunos
+// activos de BYMA), se vuelve a probar cada hora durante dos días. Sin esto, una consulta del viernes
+// a la noche que llegó antes que el precio dejaba el del jueves todo el fin de semana.
+const MISSING_RETRY_MS = 60 * 60_000;
+const MISSING_WINDOW_MS = 48 * 60 * 60_000;
+
 /**
  * ¿Pudo cambiar el precio desde la última consulta?
  * - Mercado abierto: sí, si pasaron más de 15 minutos.
- * - Mercado cerrado: solo si la última consulta fue antes del cierre (falta el precio final).
- *   Así, de noche y los fines de semana no se le pide nada a Yahoo.
+ * - Mercado cerrado: si la última consulta fue antes del cierre (falta el precio final), o si fue
+ *   después pero el último precio guardado es de una rueda anterior (cada hora, hasta dos días
+ *   después del cierre: un feriado o un activo que no operó nunca van a tener ese precio).
+ *   Así, de noche y los fines de semana no se le pide nada a Yahoo si ya está todo.
+ * `lastPriceDate`: fecha del último precio guardado (sin ella, solo se mira la hora).
  */
-export function pricesStale(lastSync: number | null | undefined, now: number = Date.now()): boolean {
+export function pricesStale(lastSync: number | null | undefined, now: number = Date.now(), lastPriceDate?: string | null): boolean {
   if (!lastSync) return true;
   const marketTime = lastMarketTime(now);
-  if (marketTime < now) return lastSync < marketTime;
+  if (marketTime < now) {
+    if (lastSync < marketTime) return true;
+    const missingSession = lastPriceDate != null && lastPriceDate < arDate(new Date(marketTime));
+    return missingSession && now - marketTime < MISSING_WINDOW_MS && now - lastSync > MISSING_RETRY_MS;
+  }
   return now - lastSync > PRICE_TTL_MS;
 }
 
@@ -51,8 +64,13 @@ export function pricesStale(lastSync: number | null | undefined, now: number = D
  * vendió del todo, una vez por día: su precio solo se usa para el Diario y para el historial, y
  * así una cartera con 15 activos y 47 ya vendidos no le hace 62 pedidos a Yahoo cada 15 minutos.
  */
-export function dueForSync(lastSync: number | null | undefined, followed: boolean, now: number = Date.now()): boolean {
-  if (!pricesStale(lastSync, now)) return false;
+export function dueForSync(
+  lastSync: number | null | undefined,
+  followed: boolean,
+  now: number = Date.now(),
+  lastPriceDate?: string | null,
+): boolean {
+  if (!pricesStale(lastSync, now, lastPriceDate)) return false;
   return followed || !lastSync || now - lastSync > DAILY_TTL_MS;
 }
 
@@ -131,12 +149,13 @@ function saveIndex(series: string, points: IndexPoint[]): void {
 
 export function syncAsset(ticker: string, force = false): Promise<void> {
   return once(`asset:${ticker}`, async () => {
-    const asset = get<{ symbol: string; last_sync: number | null }>(
-      'SELECT symbol, last_sync FROM assets WHERE ticker = ?',
+    const asset = get<{ symbol: string; last_sync: number | null; last_price: string | null }>(
+      `SELECT symbol, last_sync, (SELECT MAX(date) FROM prices WHERE prices.ticker = assets.ticker) AS last_price
+       FROM assets WHERE ticker = ?`,
       ticker,
     );
     if (!asset) return;
-    if (!force && !pricesStale(asset.last_sync)) return;
+    if (!force && !pricesStale(asset.last_sync, Date.now(), asset.last_price)) return;
     const failed = failures.get(ticker);
     // Sigue en espera: se avisa del mismo error, sin volver a pedir
     if (!force && failed && failed.until > Date.now()) throw new Error(failed.message);
@@ -282,8 +301,9 @@ export function syncIndices(force = false): Promise<void> {
 
 /** Actualiza todo. Si alguna fuente falla, se sigue usando lo guardado y se devuelve el error. */
 export async function syncAll(): Promise<string[]> {
-  const assets = all<{ ticker: string; last_sync: number | null }>(
-    'SELECT ticker, last_sync FROM assets WHERE ticker IN (SELECT ticker FROM user_assets)',
+  const assets = all<{ ticker: string; last_sync: number | null; last_price: string | null }>(
+    `SELECT ticker, last_sync, (SELECT MAX(date) FROM prices WHERE prices.ticker = assets.ticker) AS last_price
+     FROM assets WHERE ticker IN (SELECT ticker FROM user_assets)`,
   );
   // Tenencia de cada activo sumando a todos los usuarios (en la escala de hoy)
   const held = new Map<string, number>();
@@ -293,7 +313,7 @@ export async function syncAll(): Promise<string[]> {
   for (const op of adjustForSplits(trades)) held.set(op.ticker, (held.get(op.ticker) ?? 0) + (op.type === 'COMPRA' ? op.quantity : -op.quantity));
   // Se sigue de cerca lo que alguien tiene y lo recién agregado (todavía sin operaciones)
   const followed = (ticker: string) => !held.has(ticker) || held.get(ticker)! > 1e-9;
-  const due = assets.filter((a) => dueForSync(a.last_sync, followed(a.ticker)));
+  const due = assets.filter((a) => dueForSync(a.last_sync, followed(a.ticker), Date.now(), a.last_price));
   const results = await Promise.allSettled([syncFx(), syncIndices(), ...due.map((a) => syncAsset(a.ticker))]);
   const errors = results
     .filter((r): r is PromiseRejectedResult => r.status === 'rejected')

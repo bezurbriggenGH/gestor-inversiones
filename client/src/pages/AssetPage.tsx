@@ -177,7 +177,12 @@ export function AssetPage() {
             cls={tone(p.unrealized)}
           />
           <StatBox label="Resultado total" value={money(p.totalGain, currency, true)} sub={totalDetail} cls={tone(p.totalGain)} />
-          <StatBox label={capitalize(dayLabel(p.priceDate))} value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
+          {p.dayKnown ? (
+            <StatBox label={capitalize(dayLabel(p.priceDate))} value={money(p.dayChange, currency, true)} sub={pct(p.dayChangePct)} cls={tone(p.dayChange)} />
+          ) : (
+            // Falta el precio de la rueda anterior: no se sabe cuánto varió (y no se inventa un 0%)
+            <StatBox label={capitalize(dayLabel(p.priceDate))} value="sin dato" sub="no hay precio de la rueda anterior" cls="text-muted" />
+          )}
         </section>
       ) : (
         <p className="rounded-lg bg-panel px-4 py-3 text-sm">

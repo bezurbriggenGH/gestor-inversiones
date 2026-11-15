@@ -247,5 +247,10 @@ describe('Variación del día de la cartera', () => {
     // Sobre lo que valía todo ayer: 10 × $100 + 10 × $60 = $1.600
     assert.ok(near(p.summary.dayChangePct, 100 / 1600));
     assert.equal(p.summary.marketValue, 10 * 110 + 10 * 60);
+    // La pantalla tiene que decir "sin precio del 01/04", no mostrar un 0% inventado
+    assert.equal(p.positions.find((x) => x.ticker === 'HOYNO')!.missingDay, '2025-04-01');
+    assert.equal(p.positions.find((x) => x.ticker === 'HOYSI')!.missingDay, null);
+    assert.equal(p.positions.find((x) => x.ticker === 'HOYNO')!.dayKnown, false);
+    assert.equal(p.positions.find((x) => x.ticker === 'HOYSI')!.dayKnown, true);
   });
 });

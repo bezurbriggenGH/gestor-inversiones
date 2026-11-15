@@ -27,6 +27,8 @@ export interface Position {
   totalGainPct: number;
   dayChange: number;
   dayChangePct: number;
+  /** false: falta el precio de la última rueda o el de la anterior, y no se sabe cuánto varió en el día */
+  dayKnown: boolean;
 }
 
 export interface PortfolioPosition extends Position {
@@ -35,6 +37,8 @@ export interface PortfolioPosition extends Position {
   type: AssetType;
   weight: number;
   cedearGap: number | null;
+  /** Fecha de la última rueda si este activo todavía no tiene precio de ese día (su variación no se conoce) */
+  missingDay: string | null;
   /** null = la app no sabe de qué sector o país es ("Sin clasificar"). */
   sector: string | null;
   country: string | null;
@@ -278,6 +282,7 @@ export interface JournalEntry {
   market: { label: string; change: number; relative: number; beat: boolean } | null;
 }
 
+/** Porcentajes del Diario. Cuentan decisiones: una orden que el broker partió en varias es una sola. */
 export interface JournalStats {
   total: number;
   judged: number;
@@ -292,12 +297,18 @@ export interface Journal {
   currency: Currency;
   entries: JournalEntry[];
   /** En cuántas decisiones ya evaluadas elegiste mejor que quedarte en el mercado. */
-  vsMarket: { compared: number; beat: number };
+  /** `differsFromChance`: si el porcentaje se aleja de 50% (elegir al azar) lo suficiente para no ser suerte. */
+  vsMarket: { compared: number; beat: number; differsFromChance: boolean };
   stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
   /** Qué pasó, en plata, con todo lo que vendiste. */
   sold: { count: number; missedCount: number; missed: number; savedCount: number; saved: number; net: number };
-  /** Ventas con ganancia: en cuántas ganaste plata y cuánto (las del mismo activo y día cuentan como una). */
-  closed: { count: number; wins: number; losses: number; gained: number; lost: number; winRate: number | null };
+  /**
+   * Ventas con ganancia: en cuántas ganaste plata y cuánto (las del mismo activo y día cuentan como una).
+   * Siempre en dólares (en pesos solo si no hay datos del dólar), como el veredicto; `currency` dice en cuál.
+   */
+  closed: { currency: Currency; count: number; wins: number; losses: number; gained: number; lost: number; winRate: number | null };
+  /** ¿La diferencia de aciertos entre los dos grupos es real (true) o puede ser casualidad (false)? */
+  differences: Record<'buysSells' | 'accionesCedears' | 'note', boolean>;
 }
 
 /** ¿Y si no hubieras comprado ni vendido nada desde `since`? */

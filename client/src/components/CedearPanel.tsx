@@ -45,7 +45,8 @@ export function CedearPanel({ ticker, info }: { ticker: string; info: CedearInfo
     return (
       <section className="rounded-xl border border-[#b8964f]/30 bg-[#b8964f]/10 p-5 text-sm text-[#c9ab6a]">
         El ratio de {ticker} parece haber cambiado (los precios indican ~{info.observedRatio.toFixed(1)}, la tabla dice {info.ratio}). Puede
-        haber habido un split. No mostramos el dólar implícito hasta confirmar el ratio nuevo.
+        haber habido un split. Hasta que se actualice la tabla de ratios de la app, no se muestra el dólar implícito ni se sugieren dividendos
+        de este CEDEAR: con el ratio viejo saldrían mal (con un cambio de 2 a 1, el doble). Los dividendos que cargues a mano no cambian.
       </section>
     );
   }

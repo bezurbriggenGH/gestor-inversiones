@@ -107,7 +107,22 @@ describe('Cada cuánto se actualiza un activo', () => {
   test('con el mercado cerrado y el cierre ya guardado, no se pide nada', () => {
     const sabado = Date.parse('2026-11-14T15:00:00-03:00');
     const viernesNoche = Date.parse('2026-11-13T20:00:00-03:00');
-    assert.equal(dueForSync(viernesNoche, true, sabado), false);
+    assert.equal(dueForSync(viernesNoche, true, sabado, '2026-11-13'), false);
+  });
+
+  test('si al consultar faltaba el precio de la última rueda, se reintenta cada hora durante dos días', () => {
+    // Se consultó el viernes 13/11 a las 20 y Yahoo todavía tenía solo hasta el jueves 12/11
+    const viernesNoche = Date.parse('2026-11-13T20:00:00-03:00');
+    const sabado = (h: number) => Date.parse(`2026-11-14T${String(h).padStart(2, '0')}:00:00-03:00`);
+    assert.equal(dueForSync(viernesNoche, true, Date.parse('2026-11-13T20:30:00-03:00'), '2026-11-12'), false); // a la media hora: todavía no
+    assert.equal(dueForSync(viernesNoche, true, sabado(1), '2026-11-12'), true); // pasó más de una hora: se vuelve a pedir
+    assert.equal(dueForSync(sabado(1), true, sabado(1) + 30 * 60_000, '2026-11-12'), false); // recién se reintentó
+    // El viernes cerró a las 17:30: el domingo a las 18 ya pasaron más de 48 horas y no se insiste (por ejemplo, si fue feriado)
+    assert.equal(dueForSync(sabado(15), true, Date.parse('2026-11-15T18:00:00-03:00'), '2026-11-12'), false);
+    // Si ya está el precio del viernes, no se pide nada
+    assert.equal(dueForSync(viernesNoche, true, sabado(1), '2026-11-13'), false);
+    // Lo que ya vendiste sigue con su regla de una vez por día
+    assert.equal(dueForSync(viernesNoche, false, sabado(1), '2026-11-12'), false);
   });
 });
 

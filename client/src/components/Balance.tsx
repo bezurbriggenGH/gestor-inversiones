@@ -65,6 +65,8 @@ export function HoldResult({ data }: { data: HoldComparison }) {
       <p className="text-xs text-muted">
         Se compara lo que tenías el {date(data.since)}, a precios de hoy, contra lo que tenés hoy más la plata que sacaste (o menos la que
         pusiste) comprando y vendiendo desde entonces. Los dividendos no se cuentan en ninguno de los dos lados.
+        {c === 'ARS' &&
+          ' La plata de cada compra y venta se pasa a pesos de hoy con el dólar: $600 de hace unos meses no valen lo mismo que $600 de hoy.'}
       </p>
     </div>
   );
@@ -196,7 +198,7 @@ export function soldWithinText(
 /** Ventas con ganancia: en cuántas ganaste plata, y cuánto. */
 export function WinsSummary({ journal }: { journal: Journal }) {
   const w = journal.closed;
-  const c = journal.currency;
+  const c = w.currency; // en dólares, aunque estés viendo la app en pesos
   if (w.count === 0) return null;
   return (
     <section className="flex flex-col gap-4 rounded-xl bg-panel p-5">
@@ -221,7 +223,8 @@ export function WinsSummary({ journal }: { journal: Journal }) {
         Es otra cosa que los aciertos de arriba: acá no importa qué hizo el precio después, sino si cobraste más de lo que te habían costado
         esas acciones (a tu precio promedio, comisiones incluidas). Mirá el porcentaje junto con los montos: se puede ganar en casi todas las
         ventas y perder plata si la única mala fue grande. Las ventas del mismo activo en el mismo día cuentan como una.
-        {c === 'ARS' && ' En pesos la inflación ayuda: con el tiempo casi cualquier venta da ganancia. Pasá a dólares para verlo sin ese efecto.'}
+        {c === 'USD' &&
+          ' Se mide en dólares, como el resto del Diario: en pesos, la inflación hace que con el tiempo casi cualquier venta dé ganancia.'}
       </p>
     </section>
   );
@@ -260,39 +263,59 @@ export function SoldSummary({ journal }: { journal: Journal }) {
   );
 }
 
-/** Frases que comparan dos grupos de operaciones. Solo si hay suficientes de cada lado. */
-export function journalPatterns(stats: Journal['stats']): string[] {
-  const MIN = 5; // con menos operaciones evaluadas, la diferencia puede ser casualidad
+/**
+ * Frases que comparan dos grupos de decisiones. Una diferencia solo se afirma si es real (el servidor
+ * hace la prueba estadística): si puede ser casualidad, se dice eso, en vez de presentarla como un hecho.
+ */
+export function journalPatterns(journal: Pick<Journal, 'stats' | 'differences'>): string[] {
+  const { stats, differences } = journal;
+  const MIN = 10; // el mismo mínimo que usa el servidor: con menos, un porcentaje dice muy poco
   const out: string[] = [];
-  const compare = (a: JournalStats, b: JournalStats, same: string, more: (winner: 'a' | 'b', points: number, hi: string, lo: string) => string) => {
+  const compare = (
+    a: JournalStats,
+    b: JournalStats,
+    real: boolean,
+    names: [string, string],
+    more: (winner: 'a' | 'b', points: number, hi: string, lo: string) => string,
+  ) => {
     if (a.judged < MIN || b.judged < MIN || a.hitRate == null || b.hitRate == null) return;
     const d = a.hitRate - b.hitRate;
-    if (Math.abs(d) < 0.05) out.push(same);
-    else out.push(more(d > 0 ? 'a' : 'b', Math.round(Math.abs(d) * 100), share(Math.max(a.hitRate, b.hitRate)), share(Math.min(a.hitRate, b.hitRate))));
+    if (!real) {
+      // Ejemplo: "Comprando acertás 44% (de 198) y vendiendo, 51% (de 76). Con tan pocas…"
+      out.push(
+        `${names[0]} acertás ${share(a.hitRate)} (de ${a.judged}) y ${names[1]}, ${share(b.hitRate)} (de ${b.judged}). ` +
+          'Con esas cantidades, una diferencia así puede salir de pura casualidad: todavía no se puede decir que una te salga mejor que la otra.',
+      );
+    } else {
+      out.push(more(d > 0 ? 'a' : 'b', Math.round(Math.abs(d) * 100), share(Math.max(a.hitRate, b.hitRate)), share(Math.min(a.hitRate, b.hitRate))));
+    }
   };
-  compare(stats.buys, stats.sells, 'Acertás más o menos igual comprando que vendiendo.', (w, p, hi, lo) =>
+  compare(stats.buys, stats.sells, differences.buysSells, ['Comprando', 'vendiendo'], (w, p, hi, lo) =>
     w === 'a'
-      ? `Elegís mejor cuándo comprar (${hi} de aciertos) que cuándo vender (${lo}): ${p} puntos de diferencia.`
-      : `Elegís mejor cuándo vender (${hi} de aciertos) que cuándo comprar (${lo}): ${p} puntos de diferencia.`,
+      ? `Elegís mejor cuándo comprar (${hi} de aciertos) que cuándo vender (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`
+      : `Elegís mejor cuándo vender (${hi} de aciertos) que cuándo comprar (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`,
   );
-  compare(stats.acciones, stats.cedears, 'Acertás más o menos igual en acciones argentinas que en CEDEARs.', (w, p, hi, lo) =>
+  compare(stats.acciones, stats.cedears, differences.accionesCedears, ['En acciones argentinas', 'en CEDEARs'], (w, p, hi, lo) =>
     w === 'a'
-      ? `Te va mejor con acciones argentinas (${hi}) que con CEDEARs (${lo}): ${p} puntos de diferencia.`
-      : `Te va mejor con CEDEARs (${hi}) que con acciones argentinas (${lo}): ${p} puntos de diferencia.`,
+      ? `Te va mejor con acciones argentinas (${hi}) que con CEDEARs (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`
+      : `Te va mejor con CEDEARs (${hi}) que con acciones argentinas (${lo}): ${p} puntos de diferencia, demasiados para ser casualidad.`,
   );
-  compare(stats.withNote, stats.withoutNote, 'Acertás más o menos igual con o sin justificación.', (w, p, hi, lo) =>
+  compare(stats.withNote, stats.withoutNote, differences.note, ['Con justificación', 'sin ella'], (w, p, hi, lo) =>
     w === 'a'
       ? `Cuando escribís por qué operás acertás más (${hi} contra ${lo}): ${p} puntos de diferencia. Seguí justificando tus decisiones.`
       : `Curiosamente, acertás menos en las operaciones que justificaste (${lo} contra ${hi}).`,
   );
   if (stats.withNote.judged < MIN && stats.withoutNote.judged >= MIN) {
-    out.push('Casi no escribiste por qué hacías cada operación. Si empezás a justificarlas, acá vas a ver si eso te ayuda a acertar más.');
+    out.push(
+      `Justificaste muy pocas decisiones (${stats.withNote.judged} ya evaluadas) para saber si escribir por qué operás te ayuda. ` +
+        `Con al menos ${MIN} se puede empezar a comparar.`,
+    );
   }
   return out;
 }
 
 export function Patterns({ journal }: { journal: Journal }) {
-  const lines = journalPatterns(journal.stats);
+  const lines = journalPatterns(journal);
   if (lines.length === 0) return null;
   return (
     <section className="rounded-xl bg-panel p-5">

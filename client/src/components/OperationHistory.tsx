@@ -120,10 +120,17 @@ export function OperationHistory({ operations, currency }: { operations: Operati
                     <span className="hidden text-muted sm:block">{date(op.date)}</span>
                     {/* En celular: arriba el tipo y el resultado; abajo, a todo lo ancho, fecha y cantidad × precio = total */}
                     <span className="order-last col-span-2 text-xs text-muted sm:hidden">
-                      {date(op.date)} · {num(op.quantity)} × {money(op.priceConv, currency)} = {money(op.totalConv, currency)}
+                      {date(op.date)} ·{' '}
+                      {op.type === 'DIVIDENDO'
+                        ? `cobrado ${money(op.totalConv, currency)}`
+                        : `${num(op.quantity)} × ${money(op.priceConv, currency)} = ${money(op.totalConv, currency)}`}
                     </span>
-                    <span className="hidden text-right sm:block">{num(op.quantity)}</span>
-                    <span className="hidden truncate text-right sm:block">{money(op.priceConv, currency)}</span>
+                    {/* Un dividendo es un monto: los que vienen del broker están guardados como "1 × el total",
+                        y mostrar esa cantidad confunde (no es cuántas acciones tenías) */}
+                    <span className="hidden text-right sm:block">{op.type === 'DIVIDENDO' ? <span className="text-muted">—</span> : num(op.quantity)}</span>
+                    <span className="hidden truncate text-right sm:block">
+                      {op.type === 'DIVIDENDO' ? <span className="text-muted">—</span> : money(op.priceConv, currency)}
+                    </span>
                     <span className="hidden truncate text-right sm:block">{money(op.totalConv, currency)}</span>
                     <span className="truncate text-right">
                       <Result op={op} currency={currency} />

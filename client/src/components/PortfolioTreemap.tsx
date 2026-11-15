@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { ResponsiveContainer, Treemap } from 'recharts';
 import type { PortfolioPosition } from '../api';
 import { useSettings } from '../settings';
-import { capitalize, dayLabel, latestPriceDate, money, pct } from '../format';
+import { MISSING_TITLE, capitalize, dayLabel, latestPriceDate, money, pct } from '../format';
 
 type Mode = 'day' | 'total';
 const MODES: { key: Mode; label: string; scale: number }[] = [
@@ -29,19 +29,21 @@ interface NodeProps {
   depth: number;
   name: string;
   change: number;
+  // Sin precio de la última rueda: no se sabe cuánto varió
+  missing: boolean;
   weight: number;
   value: number;
   scale: number;
   onOpen: (ticker: string) => void;
 }
 
-function Node({ x, y, width, height, depth, name, change, weight, scale, onOpen }: NodeProps) {
+function Node({ x, y, width, height, depth, name, change, missing, weight, scale, onOpen }: NodeProps) {
   if (depth !== 1) return null;
   const big = width > 70 && height > 46;
   const small = width > 38 && height > 22;
   return (
     <g onClick={() => onOpen(name)} style={{ cursor: 'pointer' }}>
-      <rect x={x} y={y} width={width} height={height} rx={6} fill={color(change, scale)} stroke="#111213" strokeWidth={3} />
+      <rect x={x} y={y} width={width} height={height} rx={6} fill={missing ? '#2a2b2e' : color(change, scale)} stroke="#111213" strokeWidth={3} />
       {small && (
         <text x={x + width / 2} y={y + height / 2 + (big ? -6 : 4)} textAnchor="middle" fill="#fff" fontSize={big ? 15 : 11} fontWeight={600}>
           {name}
@@ -49,10 +51,10 @@ function Node({ x, y, width, height, depth, name, change, weight, scale, onOpen 
       )}
       {big && (
         <text x={x + width / 2} y={y + height / 2 + 13} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={12}>
-          {pct(change)} · {Math.round(weight * 100)}%
+          {missing ? 'sin dato' : pct(change)} · {Math.round(weight * 100)}%
         </text>
       )}
-      <title>{`${name}: ${pct(change)} · ${Math.round(weight * 1000) / 10}% de la cartera`}</title>
+      <title>{`${name}: ${missing ? 'sin dato de ese día' : pct(change)} · ${Math.round(weight * 1000) / 10}% de la cartera`}</title>
     </g>
   );
 }
@@ -71,10 +73,13 @@ export function PortfolioTreemap({ positions }: { positions: PortfolioPosition[]
       size: p.marketValue,
       weight: p.weight,
       change: mode === 'day' ? p.dayChangePct : p.unrealizedPct,
+      missing: mode === 'day' && !p.dayKnown,
     }));
 
   const total = positions.reduce((s, p) => s + p.marketValue, 0);
   const dayTotal = positions.reduce((s, p) => s + p.dayChange, 0);
+  const day = latestPriceDate(positions);
+  const missing = positions.filter((p) => p.quantity > 0 && !p.dayKnown);
 
   return (
     <section className="rounded-xl bg-panel p-5">
@@ -86,8 +91,14 @@ export function PortfolioTreemap({ positions }: { positions: PortfolioPosition[]
             {mode === 'day' && (
               <>
                 {' '}
-                Hoy: <span className={dayTotal >= 0 ? 'text-up' : 'text-down'}>{money(dayTotal, currency, true)}</span> sobre{' '}
+                {capitalize(dayLabel(day))}: <span className={dayTotal >= 0 ? 'text-up' : 'text-down'}>{money(dayTotal, currency, true)}</span> sobre{' '}
                 {money(total, currency)}.
+                {missing.length > 0 && (
+                  <span title={MISSING_TITLE}>
+                    {' '}
+                    Sin dato de ese día: {missing.map((p) => p.ticker).join(', ')} (no se cuentan).
+                  </span>
+                )}
               </>
             )}
           </p>

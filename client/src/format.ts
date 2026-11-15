@@ -69,4 +69,9 @@ export function latestPriceDate(positions: { priceDate: string | null; quantity:
   return positions.filter((p) => p.quantity > 0 && p.priceDate).reduce<string | null>((m, p) => (!m || p.priceDate! > m ? p.priceDate : m), null);
 }
 
+/** Para un activo del que no se sabe cuánto varió en el día: mejor decirlo que mostrar un 0% inventado. */
+export const MISSING_TITLE =
+  'No se sabe cuánto varió ese día: Yahoo todavía no publicó el precio, o el activo no operó en la rueda anterior. ' +
+  'No se suma al resultado del día. El valor usa el último precio que hay, y la app vuelve a consultar sola.';
+
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

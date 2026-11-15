@@ -44,19 +44,30 @@ describe('¿Y si no hubieras tocado nada?', () => {
     ['BBB', 'COMPRA', '2025-03-03', 5, 20],
   ]);
 
-  test('quieto desde febrero tendría 10 × $200 = $2.000; operando tengo $1.850: operar me restó $150', () => {
+  test('quieto desde febrero tendría 10 × $200 = $2.000; operando tengo $1.975 de hoy: operar me restó $25', () => {
     const h = buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01');
     assert.equal(h.frozenValue, 2000);
     assert.equal(h.actualValue, 6 * 200 + 5 * 30); // $1.350 en cartera
-    assert.equal(h.cash, 600 - 100); // $500 en el bolsillo
-    assert.equal(h.result, 1850);
-    assert.equal(h.diff, -150);
+    // $600 − $100 de marzo, con el dólar a $1.000, son US$ 0,50: con el dólar de hoy ($1.250), $625.
+    // Antes se sumaban $500 de marzo como si fueran de hoy.
+    assert.ok(near(h.cash, 625));
+    assert.ok(near(h.result, 1975));
+    assert.ok(near(h.diff, -25));
     assert.equal(h.trades, 2);
   });
 
-  test('por activo: vender 4 AAA a $150 que hoy valen $200 restó $200; BBB sumó $50', () => {
+  test('por activo: vender 4 AAA ($750 de hoy) que hoy valen $800 restó $50; BBB sumó $25', () => {
+    // AAA: 6 × $200 + $600 × 1,25 − 10 × $200 = −$50. BBB: 5 × $30 − $100 × 1,25 = +$25
     const rows = buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01').rows;
-    assert.deepEqual(rows.map((r) => [r.ticker, r.diff]), [['BBB', 50], ['AAA', -200]]);
+    assert.deepEqual(rows.map((r) => r.ticker), ['BBB', 'AAA']);
+    assert.ok(near(rows[0].diff, 25));
+    assert.ok(near(rows[1].diff, -50));
+  });
+
+  test('en pesos da lo mismo que en dólares, multiplicado por el dólar de hoy', () => {
+    const ars = buildHoldComparison(id, 'ARS', 'bolsa', '2025-02-01');
+    const usd = buildHoldComparison(id, 'USD', 'bolsa', '2025-02-01');
+    assert.ok(near(ars.diff, usd.diff * 1250));
   });
 
   test('si desde esa fecha no operé, no hay diferencia', () => {
@@ -158,8 +169,10 @@ describe('Ventas con ganancia (compras y ventas muy desparejas)', () => {
   test('gané en 3 de 4 ventas: $310 en las buenas y $40 en la mala', () => {
     const c = buildJournal(id, 'ARS', 'bolsa').closed;
     assert.deepEqual([c.count, c.wins, c.losses], [4, 3, 1]);
-    assert.ok(near(c.gained, 60 + 50 / 3 + 700 / 3)); // $310
-    assert.ok(near(c.lost, 40));
+    // Se cuenta en dólares aunque se vea en pesos; en esas fechas el dólar estuvo fijo en $1.000
+    assert.equal(c.currency, 'USD');
+    assert.ok(near(c.gained, (60 + 50 / 3 + 700 / 3) / 1000)); // $310 = US$ 0,31
+    assert.ok(near(c.lost, 40 / 1000));
     assert.equal(c.winRate, 0.75);
   });
 
@@ -183,7 +196,7 @@ describe('Una orden de venta partida en varias cuenta como una sola', () => {
   test('es una venta con ganancia de $80, no dos ganadoras y una perdedora', () => {
     const c = buildJournal(id, 'ARS', 'bolsa').closed;
     assert.deepEqual([c.count, c.wins, c.losses], [1, 1, 0]);
-    assert.ok(near(c.gained, 80));
+    assert.ok(near(c.gained, 80 / 1000)); // $80 con el dólar a $1.000
     assert.equal(c.lost, 0);
   });
 });

@@ -57,7 +57,7 @@ export function ReportPage() {
     y.gain += m.gain;
     years.set(m.month.slice(0, 4), y);
   }
-  const patterns = journalPatterns(j.stats);
+  const patterns = journalPatterns(j);
 
   if (p.positions.length === 0) {
     return (
@@ -193,20 +193,27 @@ export function ReportPage() {
       </Block>
 
       <Block title="Tus decisiones">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
+          {/* La medida principal: que un precio suba no prueba que elegiste bien si en esos días subió todo */}
+          <Fact label="Contra el mercado" value={j.vsMarket.compared ? `${j.vsMarket.beat} de ${j.vsMarket.compared}` : '—'} />
           <Fact label="Aciertos" value={j.stats.all.hitRate == null ? '—' : share(j.stats.all.hitRate)} />
           <Fact label="En compras" value={j.stats.buys.hitRate == null ? '—' : share(j.stats.buys.hitRate)} />
           <Fact label="En ventas" value={j.stats.sells.hitRate == null ? '—' : share(j.stats.sells.hitRate)} />
         </div>
         <p className="text-sm text-muted">
-          {j.stats.all.hits} aciertos de {j.stats.all.judged} operaciones evaluadas ({j.stats.all.total} en total). Una compra es acierto si a
-          los 90 días el precio subió en dólares; una venta, si bajó. Mide el momento de cada decisión, no si se ganó plata.
+          {j.vsMarket.compared > 0 &&
+            `En ${j.vsMarket.beat} de ${j.vsMarket.compared} decisiones elegiste mejor que el S&P 500 (CEDEARs) o el Merval (acciones) en el mismo plazo` +
+              (j.vsMarket.differsFromChance ? '. ' : ': con esta cantidad, no se distingue de elegir al azar. ')}
+          {j.stats.all.hits} aciertos de {j.stats.all.judged} decisiones evaluadas ({j.stats.all.total} en total; una orden que el broker partió en
+          varias cuenta como una). Una compra es acierto si a los 90 días el precio subió en dólares; una venta, si bajó. Mide el momento de cada
+          decisión, no si se ganó plata.
         </p>
         {j.closed.count > 0 && (
           <p className="tabular text-sm">
             Ganaste plata en {j.closed.wins} de {j.closed.wins + j.closed.losses} ventas
-            {j.closed.winRate != null && ` (${share(j.closed.winRate)})`}: {money(j.closed.gained, currency, true, true)} en las buenas y{' '}
-            {money(-j.closed.lost, currency, true, true)} en las malas, contra tu precio promedio.
+            {j.closed.winRate != null && ` (${share(j.closed.winRate)})`}: {money(j.closed.gained, j.closed.currency, true, true)} en las buenas y{' '}
+            {money(-j.closed.lost, j.closed.currency, true, true)} en las malas, contra tu precio promedio
+            {j.closed.currency === 'USD' && ', medido en dólares'}.
           </p>
         )}
         {j.sold.count > 0 && (

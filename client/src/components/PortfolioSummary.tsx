@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { History, Portfolio } from '../api';
 import { useSettings } from '../settings';
-import { FX_LABEL, capitalize, date, dayLabel, latestPriceDate, money, pct, tone } from '../format';
+import { FX_LABEL, MISSING_TITLE, capitalize, date, dayLabel, latestPriceDate, money, pct, tone } from '../format';
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 // El mismo límite que usa "Para revisar" en Composición: un solo activo no debería pasar del 20%
@@ -82,6 +82,8 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
   const s = data.summary;
   const real = data.realReturn;
   const irr = history?.portfolio?.irr ?? null;
+  // De estos no se sabe cuánto variaron en el día (falta un precio): mejor decirlo que mostrar 0%
+  const missing = data.positions.filter((p) => p.quantity > 0 && !p.dayKnown);
   // El mismo valor en la otra moneda, con el dólar de hoy
   const other =
     data.fx && data.fx.rate > 0
@@ -103,6 +105,11 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
         <span className={`tabular mt-1 text-sm ${tone(s.dayChange)}`}>
           {money(s.dayChange, currency, true)} ({pct(s.dayChangePct)}) {dayLabel(latestPriceDate(data.positions))}
         </span>
+        {missing.length > 0 && (
+          <span className="text-xs text-muted" title={MISSING_TITLE}>
+            Sin dato de ese día: {missing.map((p) => p.ticker).join(', ')} (no se cuentan)
+          </span>
+        )}
       </div>
 
       <div className={CARD}>
@@ -115,6 +122,16 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
           >
             <span className={`font-medium ${tone(s.totalGainPct)}`}>{pct(s.totalGainPct)}</span> sobre{' '}
             {money(s.peakCapital, currency)} que llegaste a tener puesto
+          </span>
+        )}
+        {/* En pesos, la ganancia suma pesos de distintos años como si valieran lo mismo: al lado va lo que
+            queda después de la inflación, para que "+60%" no se lea como "gané 60% de verdad" */}
+        {currency === 'ARS' && real && (
+          <span
+            className="tabular text-sm text-muted"
+            title="Lo que tenés hoy menos lo que valdría cada peso que pusiste (y sacaste) si hubiera seguido a la inflación (índice UVA). En pesos de hoy."
+          >
+            Descontada la inflación: <span className={`font-medium ${tone(real.gain)}`}>{money(real.gain, 'ARS', true)}</span>
           </span>
         )}
         <div className="mt-2 flex flex-col gap-0.5 border-t border-line pt-2">

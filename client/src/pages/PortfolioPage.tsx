@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { History, PortfolioPosition } from '../api';
 import { useHistory, usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
-import { capitalize, dayLabel, latestPriceDate, money, num, pct, share, shortDayLabel, tone } from '../format';
+import { MISSING_TITLE, capitalize, dayLabel, latestPriceDate, money, num, pct, share, shortDayLabel, tone } from '../format';
 import { Button, ErrorBox, Loading, Triangle } from '../components/ui';
 import { AddAssetDialog } from '../components/AddAssetDialog';
 import { LineChart, type ChartLine } from '../components/LineChart';
@@ -66,9 +66,15 @@ function AssetCard({ p }: { p: PortfolioPosition }) {
               <span className={`flex items-center gap-1 font-medium ${tone(p.unrealizedPct)}`} title="Ganancia en lo que tenés hoy">
                 {pct(p.unrealizedPct)} <Triangle value={p.unrealizedPct} />
               </span>
-              <span className="text-xs text-muted" title={`Variación del precio ${dayLabel(p.priceDate)}`}>
-                {shortDayLabel(p.priceDate)} <span className={tone(p.dayChangePct)}>{pct(p.dayChangePct)}</span>
-              </span>
+              {!p.dayKnown ? (
+                <span className="text-xs text-muted" title={MISSING_TITLE}>
+                  {p.missingDay ? `sin precio ${shortDayLabel(p.missingDay)}` : `${shortDayLabel(p.priceDate)} sin dato`}
+                </span>
+              ) : (
+                <span className="text-xs text-muted" title={`Variación del precio ${dayLabel(p.priceDate)}`}>
+                  {shortDayLabel(p.priceDate)} <span className={tone(p.dayChangePct)}>{pct(p.dayChangePct)}</span>
+                </span>
+              )}
             </div>
           </>
         ) : (
@@ -123,7 +129,13 @@ function AssetTable({ positions }: { positions: PortfolioPosition[] }) {
                   </Link>
                   <span className="block max-w-28 truncate text-xs text-muted sm:max-w-48">{p.name}</span>
                 </td>
-                <td className={`hidden px-2 py-2.5 sm:px-3 text-right sm:table-cell ${tone(p.dayChangePct)}`}>{pct(p.dayChangePct)}</td>
+                {hasPosition && !p.dayKnown ? (
+                  <td className="hidden px-2 py-2.5 sm:px-3 text-right text-xs text-muted sm:table-cell" title={MISSING_TITLE}>
+                    {p.missingDay ? 'sin precio' : 'sin dato'}
+                  </td>
+                ) : (
+                  <td className={`hidden px-2 py-2.5 sm:px-3 text-right sm:table-cell ${tone(p.dayChangePct)}`}>{pct(p.dayChangePct)}</td>
+                )}
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right md:table-cell">{hasPosition ? num(p.quantity) : '—'}</td>
                 <td className="hidden px-2 py-2.5 sm:px-3 text-right lg:table-cell">{money(p.price, currency)}</td>
                 <td className="px-2 py-2.5 sm:px-3 text-right">{hasPosition ? money(p.marketValue, currency) : <span className="text-muted">Ya no tenés</span>}</td>

@@ -141,10 +141,14 @@ export function OperationPage() {
       </div>
 
       <section className="grid gap-6 px-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Row label={isDividend ? 'Acciones' : 'Cantidad'}>{num(op.quantity)}</Row>
-        <Row label={isDividend ? 'Dividendo por acción' : 'Precio unitario'}>
-          {money(op.priceConv, currency)}
-        </Row>
+        {/* Los dividendos que vienen del broker traen solo el total (se guardan como 1 × el total):
+            ahí no se muestra "1 acción", que no es cuántas tenías */}
+        {!(isDividend && data.loaded.quantity === 1) && (
+          <>
+            <Row label={isDividend ? 'Acciones' : 'Cantidad'}>{num(op.quantity)}</Row>
+            <Row label={isDividend ? 'Dividendo por acción' : 'Precio unitario'}>{money(op.priceConv, currency)}</Row>
+          </>
+        )}
         <Row label={isDividend ? 'Retenciones' : 'Comisiones'}>{money(op.feesConv, currency)}</Row>
         <Row label={op.type === 'COMPRA' ? 'Monto total pagado' : 'Monto cobrado (neto)'}>
           <span className="font-semibold">{money(op.totalConv, currency)}</span>

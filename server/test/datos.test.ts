@@ -98,6 +98,24 @@ describe('Dividendos de CEDEARs', () => {
     assert.deepEqual(dividendEvents('ZZZ', 'CEDEAR'), []);
   });
 
+  test('si los precios dicen que el ratio cambió y la tabla no, no se sugieren dividendos (saldrían multiplicados)', () => {
+    // La tabla dice PEP 18 y PG 15. Con el CCL a $1.000 y la acción a US$ 100 en EE.UU.:
+    // - PG en BYMA a $6.666,67 → ratio observado 100 × 1.000 ÷ 6.666,67 = 15, igual que la tabla.
+    // - PEP en BYMA a $2.777,78 → ratio observado 36: BYMA lo pasó de 18 a 36 y la tabla quedó vieja.
+    //   Con 18, cada dividendo saldría el doble de lo cobrado.
+    run("INSERT INTO fx_rates (kind, date, buy, sell) VALUES ('contadoconliqui', '2026-11-02', 1000, 1000)");
+    for (const [ticker, ars] of [['PEP', (100 * 1000) / 36], ['PG', (100 * 1000) / 15]] as const) {
+      run("INSERT INTO assets (ticker, symbol, name, type) VALUES (?, ?, 'Prueba', 'CEDEAR')", ticker, `${ticker}.BA`);
+      run("INSERT INTO index_values (series, date, value) VALUES (?, '2026-06-10', 1)", `usdiv:${ticker}`);
+      for (const date of ['2026-11-02', '2026-11-03', '2026-11-04']) {
+        run('INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)', ticker, date, ars);
+        run('INSERT INTO index_values (series, date, value) VALUES (?, ?, 100)', `us:${ticker}`, date);
+      }
+    }
+    assert.deepEqual(dividendEvents('PEP', 'CEDEAR'), []);
+    assert.equal(dividendEvents('PG', 'CEDEAR').length, 1); // con el ratio bien, sí
+  });
+
   test('en una acción local se usa lo que informa Yahoo, que ya está en pesos', () => {
     run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('LOC', 'LOC.BA', 'Local', 'ACCION')");
     run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('LOC', '2024-05-10', 12.5)");

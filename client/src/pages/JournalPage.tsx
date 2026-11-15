@@ -8,13 +8,21 @@ import { ErrorBox, Loading } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
 import { Patterns, SoldSummary, WinsSummary, soldWithinText } from '../components/Balance';
 
+// Con menos decisiones evaluadas, un porcentaje dice muy poco (3 de 4 no prueba nada): no se muestra
+const MIN_JUDGED = 10;
+
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
+  const few = stats.judged < MIN_JUDGED;
   return (
-    <div className="rounded-xl bg-panel p-5">
+    <div className="rounded-xl bg-panel p-4">
       <p className="text-sm text-muted">{label}</p>
-      <p className="tabular mt-1 text-2xl font-semibold">{stats.hitRate != null ? pct(stats.hitRate).replace('+', '') : '—'}</p>
+      <p className="tabular mt-1 text-xl font-semibold">{!few && stats.hitRate != null ? pct(stats.hitRate).replace('+', '') : '—'}</p>
       <p className="tabular text-xs text-muted">
-        {stats.judged ? `${stats.hits} aciertos de ${stats.judged}` : 'sin operaciones evaluadas'}
+        {stats.judged === 0
+          ? 'sin decisiones evaluadas'
+          : few
+            ? `solo ${stats.judged} evaluadas: muy pocas para un porcentaje`
+            : `${stats.hits} aciertos de ${stats.judged}`}
         {sub ? ` · ${sub}` : ''}
       </p>
     </div>
@@ -32,6 +40,7 @@ export function JournalPage() {
   if (error || !data) return <ErrorBox error={error} />;
 
   const s = data.stats;
+  const m = data.vsMarket;
   const entries = data.entries.filter((e) =>
     filter === 'TODAS' ? true : filter === 'PENDIENTE' ? !e.verdict : e.verdict === filter,
   );
@@ -41,42 +50,68 @@ export function JournalPage() {
       <div>
         <h1 className="text-xl font-semibold">Diario de decisiones</h1>
         <p className="mt-1 text-sm text-muted">
-          Qué hizo el precio 30, 90 y 180 días después de cada compra y venta. Una compra es acierto si a los 90 días el precio subió; una
-          venta, si bajó. Movimientos menores al 2% cuentan como neutrales. Los cambios se miden en dólares, aunque veas la app en pesos:
-          así la inflación no hace que toda compra parezca un acierto.
-        </p>
-        <p className="mt-2 text-sm text-muted">
-          El veredicto mira el <span className="text-text">momento</span> de cada decisión, no si ganaste plata. Si comprás, vendés al doble a
-          los 5 días y después el precio se derrumba, la compra figura como error de momento aunque hayas ganado: por eso en cada compra se
-          aclara si vendiste antes y con qué resultado, y más abajo está en cuántas ventas ganaste plata.
+          Qué hizo el precio 30, 90 y 180 días después de cada compra y venta, medido en dólares (así la inflación no hace que toda compra
+          parezca un acierto). Mira el <span className="text-text">momento</span> de cada decisión, no si ganaste plata: eso está más abajo,
+          en "Lo que pasó con tus ventas, en plata".
         </p>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* La medida principal: que un precio suba no prueba que elegiste bien si en esos días subió todo */}
+      <section className="rounded-xl bg-panel p-5">
+        <h2 className="text-sm text-muted">Contra el mercado</h2>
+        {m.compared > 0 ? (
+          <>
+            <p className="tabular mt-1 text-3xl font-semibold">{pct(m.beat / m.compared).replace('+', '')}</p>
+            <p className="text-sm">
+              En <span className="tabular font-medium">{m.beat} de {m.compared}</span> decisiones elegiste mejor que el mercado en el mismo plazo.
+              {m.compared < MIN_JUDGED ? (
+                <span className="text-muted"> Son muy pocas todavía para sacar conclusiones.</span>
+              ) : m.differsFromChance ? (
+                <span className="text-muted">
+                  {' '}
+                  {m.beat / m.compared > 0.5
+                    ? 'Es más de lo que daría elegir al azar, y con tantas decisiones no parece suerte.'
+                    : 'Es menos de lo que daría elegir al azar, y con tantas decisiones no parece mala suerte: te habría ido mejor en el índice.'}
+                </span>
+              ) : (
+                <span className="text-muted"> Está cerca del 50%: con esta cantidad de decisiones, no se distingue de elegir al azar.</span>
+              )}
+            </p>
+          </>
+        ) : (
+          <p className="mt-1 text-sm">Todavía no hay decisiones con datos del mercado para comparar.</p>
+        )}
+        <p className="mt-2 text-xs leading-relaxed text-muted">
+          Cada compra y venta se compara con lo que hizo en esos mismos días el S&amp;P 500 (CEDEARs) o el Merval (acciones), en dólares.
+          Ejemplo: compraste y a los 90 días subió 5%, pero el S&amp;P 500 subió 10%: el precio subió, pero te habría ido mejor en el índice.
+          Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice. Con 50% sería como elegir al azar.
+        </p>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-3">
         <StatCard label="Aciertos totales" stats={s.all} sub={s.all.pending ? `${s.all.pending} esperando` : undefined} />
         <StatCard label="En compras" stats={s.buys} />
         <StatCard label="En ventas" stats={s.sells} />
-        <StatCard label="Con justificación" stats={s.withNote} sub={s.withoutNote.hitRate != null ? `sin: ${pct(s.withoutNote.hitRate).replace('+', '')}` : undefined} />
       </section>
-
-      {data.vsMarket.compared > 0 && (
-        <section className="rounded-xl bg-panel p-5 text-sm leading-relaxed">
-          <h2 className="mb-1 font-medium">Contra el mercado</h2>
-          <p>
-            En <span className="tabular font-medium">{data.vsMarket.beat} de {data.vsMarket.compared}</span> decisiones elegiste mejor que el
-            mercado en el mismo plazo ({pct(data.vsMarket.beat / data.vsMarket.compared).replace('+', '')}).
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Que un precio suba no prueba que elegiste bien si en esos días subió todo. Por eso cada decisión se compara también con el S&amp;P
-            500 (CEDEARs) o el Merval (acciones), en dólares. Ejemplo: compraste y subió 5%, pero el S&amp;P 500 subió 10%: es acierto, pero
-            te habría ido mejor en el índice. Una venta le gana al mercado si, después, lo que vendiste anduvo peor que el índice.
-          </p>
-        </section>
-      )}
+      <p className="-mt-3 text-xs text-muted">
+        Una compra es acierto si a los 90 días el precio subió más de 2%; una venta, si bajó. En un mercado que viene subiendo, esto favorece a
+        las compras: por eso lo principal es "contra el mercado". Una orden que el broker partió en varias cuenta como una decisión.
+      </p>
 
       <Patterns journal={data} />
-      <WinsSummary journal={data} />
-      <SoldSummary journal={data} />
+
+      {(data.closed.count > 0 || data.sold.count > 0) && (
+        <details className="group rounded-xl bg-panel">
+          <summary className="cursor-pointer list-none px-5 py-4 font-medium">
+            <span className="mr-2 inline-block text-muted transition group-open:rotate-90">›</span>
+            Lo que pasó con tus ventas, en plata
+          </summary>
+          <div className="flex flex-col gap-4 px-2 pb-2">
+            <WinsSummary journal={data} />
+            <SoldSummary journal={data} />
+          </div>
+        </details>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {(['TODAS', 'ACIERTO', 'ERROR', 'NEUTRAL', 'PENDIENTE'] as Filter[]).map((f) => (

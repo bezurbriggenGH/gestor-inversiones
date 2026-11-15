@@ -7,6 +7,9 @@
 //    ($600) y con $100 compraste otra cosa que hoy vale $150: tenés $1.200 + $150 en cartera y
 //    $500 en el bolsillo = $1.850. Operar te restó $150.
 //    Los dividendos no se cuentan en ninguno de los dos lados (casi no cambian con lo que operaste).
+//    Viendo en pesos, la plata de cada compra y venta se lleva a pesos de hoy a través del dólar (como
+//    en el Diario): $600 de marzo no valen lo mismo que $600 de hoy. Ejemplo: vendí por $600 con el
+//    dólar a $1.000 (US$ 0,60); hoy el dólar está a $1.250 → cuentan como $750 de hoy.
 //
 // 2. Comisiones: cuánto pagaste por comprar y vender, y qué parte de tu ganancia se llevaron.
 import { get } from '../db.ts';
@@ -14,7 +17,11 @@ import type { FxKind } from '../providers/dolar.ts';
 import { buildPortfolio, getOperations, loadFx, makeConverter, opTotal, sortOps, type Currency } from './portfolio.ts';
 
 export function buildHoldComparison(userId: number, currency: Currency, kind: FxKind, since: string) {
-  const conv = makeConverter(currency, loadFx(kind));
+  const fx = loadFx(kind);
+  const conv = makeConverter(currency, fx);
+  // La plata de cada operación, en la moneda elegida y llevada a hoy (ver arriba)
+  const today = fx.latest();
+  const cashConv = (amount: number, date: string) => (currency === 'ARS' && today ? (amount / fx.at(date)) * today.rate : conv(amount, date));
   const ops = sortOps(getOperations(userId)).filter((o) => o.type !== 'DIVIDENDO');
 
   const byTicker = new Map<string, typeof ops>();
@@ -35,7 +42,7 @@ export function buildHoldComparison(userId: number, currency: Currency, kind: Fx
         heldThen += signed;
         continue;
       }
-      const total = conv(opTotal(op), op.date);
+      const total = cashConv(opTotal(op), op.date);
       if (op.type === 'COMPRA') bought += total;
       else sold += total;
       if (!op.auto) trades++;

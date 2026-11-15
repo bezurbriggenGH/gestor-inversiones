@@ -117,6 +117,7 @@ describe('Ganancias', () => {
     assert.ok(near(p.unrealizedPct, 0.3));
     assert.equal(p.dayChange, 100); // 10 × ($130 − $120)
     assert.ok(near(p.dayChangePct, 130 / 120 - 1));
+    assert.equal(p.dayKnown, true);
   });
 
   test('variación del día con una compra de hoy: tenía 10 a $100, hoy vale $110 y compré 5 a $105 → gané $125', () => {
@@ -144,12 +145,13 @@ describe('Ganancias', () => {
     assert.equal(p.dayChange, 100);
   });
 
-  test('variación del día: si el precio anterior es de hace una semana, no es "hoy" y se informa 0', () => {
+  test('variación del día: si el precio anterior es de hace una semana, no es "hoy": no suma y queda como desconocida', () => {
     // Tengo 1.312 unidades. Precios guardados: $295 el 06/11 y $206,75 el 13/11, nada en el medio.
     // Antes: "hoy −29,9%", −$115.784. Eso es lo que bajó en una semana, no hoy.
     const p = position([op('COMPRA', '2026-06-02', 1312, 500)], close('2026-11-13', 206.75), close('2026-11-06', 295));
     assert.equal(p.dayChange, 0);
     assert.equal(p.dayChangePct, 0);
+    assert.equal(p.dayKnown, false); // la pantalla dice "sin dato", no 0%
     assert.equal(p.marketValue, 1312 * 206.75); // el valor sí usa el último precio
   });
 

@@ -208,6 +208,9 @@ export interface Position {
   totalGainPct: number;
   dayChange: number;
   dayChangePct: number; // variación del precio del activo en el día
+  // ¿Se sabe cuánto varió en el día? No, si falta el precio anterior o el de la última rueda: ahí
+  // dayChange y dayChangePct valen 0 para no sumar nada al total, pero la pantalla muestra "sin dato"
+  dayKnown: boolean;
   prevMarketValue: number; // lo que valía ayer lo que ya tenías ayer
 }
 
@@ -217,8 +220,8 @@ export interface Position {
 const MAX_DAYS_BETWEEN_SESSIONS = 5;
 
 export function computePosition(ops: OperationRow[], last: PriceRow | undefined, prev: PriceRow | undefined, conv: Converter) {
-  // Sin el precio de la rueda anterior no se puede saber cuánto varió en el día: se informa 0,
-  // no la variación de toda una semana como si fuera la de hoy
+  // Sin el precio de la rueda anterior no se puede saber cuánto varió en el día: no se suma nada (0)
+  // y se marca dayKnown = false, en vez de dar la variación de toda una semana como si fuera la de hoy
   if (last && prev && Date.parse(last.date) - Date.parse(prev.date) > MAX_DAYS_BETWEEN_SESSIONS * 86_400_000) prev = undefined;
   let quantity = 0;
   let costBasis = 0;
@@ -297,6 +300,7 @@ export function computePosition(ops: OperationRow[], last: PriceRow | undefined,
     totalGainPct: peak > 0 ? totalGain / peak : 0,
     dayChange,
     dayChangePct: prevPrice > 0 ? price / prevPrice - 1 : 0,
+    dayKnown: Boolean(last && prev),
     prevMarketValue,
   };
   return { position, realizedByOp };
@@ -456,6 +460,10 @@ export function dividendEvents(ticker: string, type: string): { date: string; am
   const symbol = usSymbolOf(ticker);
   const fx = loadFx('bolsa');
   if (!symbol || fx.empty) return [];
+  // Si los precios dicen que el ratio cambió y la tabla todavía tiene el viejo, los montos saldrían mal:
+  // tras un cambio de 10 a 20, la app ya duplicó tu cantidad, y dividir por 10 daría el doble de lo cobrado.
+  // Mejor no sugerir nada (la página del CEDEAR avisa) que sugerir un monto equivocado.
+  if (buildCedearInfo(ticker)?.status === 'RATIO_DUDOSO') return [];
   const ratio = CEDEAR_RATIOS[ticker];
   return all<{ date: string; value: number }>('SELECT date, value FROM index_values WHERE series = ? ORDER BY date', `usdiv:${symbol}`).map(
     (d) => ({ date: d.date, amount: (d.value / ratio) * fx.at(d.date) }),
@@ -515,16 +523,24 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
     ...positionFor(userId, a.ticker, conv).position,
     cedearGap: a.type === 'CEDEAR' ? cedearGap(a.ticker) : null,
     ...classifyAsset(a.ticker, a.type, a.sector),
+    // La fecha de la última rueda si este activo no tiene precio de ese día (si no, null)
+    missingDay: null as string | null,
   }));
 
-  // La variación del día es la de la última rueda. Un activo que ese día no tuvo precio (no operó, o
-  // la fuente todavía no lo publicó) no varió: no se le cuenta la suba o baja de su última rueda vieja.
-  const lastSession = positions.reduce<string | null>((m, p) => (p.priceDate && (!m || p.priceDate > m) ? p.priceDate : m), null);
+  // La variación del día es la de la última rueda (la fecha de precio más nueva de lo que tenés).
+  // Un activo sin precio de ese día (no operó, o Yahoo todavía no lo publicó) no suma ni resta al
+  // total del día: no se le cuenta la suba o baja de su última rueda vieja. Y no se muestra como 0%,
+  // que sería un dato inventado: se marca `missingDay` y la pantalla dice "sin precio".
+  const lastSession = positions
+    .filter((p) => p.quantity > 0)
+    .reduce<string | null>((m, p) => (p.priceDate && (!m || p.priceDate > m) ? p.priceDate : m), null);
   for (const p of positions) {
-    if (!p.priceDate || p.priceDate === lastSession) continue;
+    if (!p.priceDate || !lastSession || p.priceDate >= lastSession) continue;
     p.dayChange = 0;
     p.dayChangePct = 0;
     p.prevMarketValue = p.marketValue;
+    p.dayKnown = false;
+    if (p.quantity > 0) p.missingDay = lastSession;
   }
 
   const sum = (k: keyof Position) => positions.reduce((acc, p) => acc + (p[k] as number), 0);
