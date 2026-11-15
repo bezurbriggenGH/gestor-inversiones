@@ -29,7 +29,7 @@ import { searchCatalog } from './catalog.ts';
 import { simulate } from './services/simulator.ts';
 import { classify, normalizeTicker } from './tickers.ts';
 import { checkRateLimit, currentUser, endSession, login, register, requireUser, startSession, userId } from './auth.ts';
-import { HttpError, addDays, arDate, isRealDate } from './util.ts';
+import { HttpError, addDays, arDate, isRealDate, waitAtMost } from './util.ts';
 
 export const router = Router();
 
@@ -69,14 +69,22 @@ const q = (req: { query: Record<string, unknown> }) => ({
   fx: parseFxKind(req.query.fx),
 });
 
+// La portada no espera a Yahoo más que esto: si anda lento, se muestra lo guardado y la actualización
+// sigue en segundo plano. La pantalla vuelve a preguntar enseguida y ahí ya trae los precios nuevos.
+const SYNC_WAIT_MS = 2_000;
+
 router.get('/portfolio', async (req, res) => {
-  const errors = await syncAll();
+  const sync = await waitAtMost(
+    syncAll().catch((err: unknown) => [err instanceof Error ? err.message : String(err)]),
+    SYNC_WAIT_MS,
+  );
+  const errors = sync.done ? sync.value : [];
   const { currency, fx } = q(req);
   const portfolio = buildPortfolio(userId(res), currency, fx);
   const history = buildHistory(userId(res), 'ARS', fx);
   const target = get<{ target_cedear: number | null }>('SELECT target_cedear FROM users WHERE id = ?', userId(res))?.target_cedear ?? null;
   const review = buildReview(portfolio.positions, portfolio.exposure.sectors, target, arDate());
-  res.json({ ...portfolio, realReturn: history.realReturn, review, errors });
+  res.json({ ...portfolio, realReturn: history.realReturn, review, errors, updating: !sync.done });
 });
 
 /** Objetivo de reparto: qué porcentaje de la cartera querés en CEDEARs (el resto, en acciones). null lo quita. */
@@ -238,10 +246,29 @@ export function amountsProblem(type: OpType, quantity: number, price: number, fe
   return null;
 }
 
+/** Lo máximo que tuviste en los 90 días anteriores al pago de un dividendo. */
+function maxHoldingBeforeDividend(ops: OperationRow[], div: OperationRow): number {
+  const from = addDays(div.date, -DIVIDEND_WINDOW_DAYS).toISOString().slice(0, 10);
+  return maxHoldingBetween(ops.filter((o) => o.id !== div.id), from, div.date);
+}
+
+/** ¿Los dividendos que ya estaban cargados siguen siendo posibles con estos cambios? */
+function assertDividendsStillPossible(before: OperationRow[], after: OperationRow[], ticker: string, what: string) {
+  for (const div of after.filter((o) => o.type === 'DIVIDENDO')) {
+    const prev = before.find((o) => o.id === div.id);
+    // Solo se frena lo que este cambio rompe: si ya no cerraba antes, no es culpa de este cambio
+    const okBefore = prev != null && prev.quantity <= maxHoldingBeforeDividend(before, prev) + 1e-9;
+    const okAfter = div.quantity <= maxHoldingBeforeDividend(after, div) + 1e-9;
+    if (okBefore && !okAfter) {
+      const when = div.date.split('-').reverse().join('/');
+      throw new HttpError(409, `No se puede ${what}: el dividendo de ${ticker} del ${when} quedaría por más acciones de las que tenías. Corregí o borrá primero ese dividendo.`);
+    }
+  }
+}
+
 /** Un dividendo solo puede ser por acciones que tuviste cerca de la fecha de pago. */
 function assertPossibleDividend(ops: OperationRow[], div: OperationRow, ticker: string) {
-  const from = addDays(div.date, -DIVIDEND_WINDOW_DAYS).toISOString().slice(0, 10);
-  const max = maxHoldingBetween(ops, from, div.date);
+  const max = maxHoldingBeforeDividend(ops, div);
   const when = div.date.split('-').reverse().join('/');
   if (max <= 0) throw new HttpError(409, `No tenías ${ticker} en los 90 días anteriores al ${when}: no pudiste cobrar ese dividendo.`);
   if (div.quantity > max + 1e-9) {
@@ -254,6 +281,19 @@ function readNote(b: Record<string, unknown>) {
   const link = cleanText(b.note_link, 500);
   if (link && !/^https?:\/\//i.test(link)) throw new HttpError(400, 'El link debe empezar con http:// o https://');
   return { note_title: cleanText(b.note_title, 120), note_body: cleanText(b.note_body, 5000), note_link: link };
+}
+
+/** Fecha, cantidad, precio y comisiones de una operación, controlados igual al cargarla y al editarla. */
+function readAmounts(type: OpType, b: Record<string, unknown>) {
+  const date = String(b.date ?? '');
+  if (!isRealDate(date)) throw new HttpError(400, 'Fecha inválida');
+  if (date > arDate()) throw new HttpError(400, 'La fecha no puede ser futura');
+  const quantity = Number(b.quantity);
+  const price = Number(b.price);
+  const fees = b.fees === '' || b.fees == null ? 0 : Number(b.fees);
+  const problem = amountsProblem(type, quantity, price, fees);
+  if (problem) throw new HttpError(400, problem);
+  return { date, quantity, price, fees };
 }
 
 function insertOperation(op: Omit<OperationRow, 'id' | 'created_at'>) {
@@ -282,14 +322,7 @@ router.post('/assets/:ticker/operations', (req, res) => {
 
   const type = b.type as OpType;
   if (!OP_TYPES.includes(type)) throw new HttpError(400, 'El tipo debe ser COMPRA, VENTA o DIVIDENDO');
-  const date = String(b.date ?? '');
-  if (!isRealDate(date)) throw new HttpError(400, 'Fecha inválida');
-  if (date > arDate()) throw new HttpError(400, 'La fecha no puede ser futura');
-  const quantity = Number(b.quantity);
-  const price = Number(b.price);
-  const fees = b.fees === '' || b.fees == null ? 0 : Number(b.fees);
-  const problem = amountsProblem(type, quantity, price, fees);
-  if (problem) throw new HttpError(400, problem);
+  const { date, quantity, price, fees } = readAmounts(type, b);
 
   const draft = { user_id: uid, ticker, type, date, quantity, price, fees, ...readNote(b) };
   // Se recalcula todo junto: una compra nueva puede cambiar las fracciones que deja un split
@@ -342,16 +375,44 @@ router.put('/operations/:id/note', (req, res) => {
   res.status(204).end();
 });
 
+// Corregir una operación mal cargada: fecha, cantidad, precio y comisiones, tal como se cargaron
+// (antes de ajustar por splits). El tipo no cambia, y la justificación y las fotos quedan como estaban.
+router.put('/operations/:id', (req, res) => {
+  const uid = userId(res);
+  const id = Number(req.params.id);
+  const op = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, uid);
+  if (!op) throw new HttpError(404, 'Operación no encontrada');
+  const { date, quantity, price, fees } = readAmounts(op.type, req.body ?? {});
+
+  const raw = getRawOperations(uid, op.ticker);
+  const before = adjustOperations(raw);
+  // Se recalcula todo junto: cambiar una compra puede cambiar las fracciones que deja un split
+  const after = adjustOperations(raw.map((o) => (o.id === id ? { ...o, date, quantity, price, fees } : o)));
+  try {
+    assertNoShortSelling(after);
+  } catch (err) {
+    throw new HttpError(409, `Con ese cambio quedarían ventas sin respaldo. ${err instanceof Error ? err.message : ''}`.trim());
+  }
+  if (op.type === 'DIVIDENDO') assertPossibleDividend(after, after.find((o) => o.id === id)!, op.ticker);
+  else assertDividendsStillPossible(before, after, op.ticker, 'hacer este cambio');
+
+  run('UPDATE operations SET date = ?, quantity = ?, price = ?, fees = ? WHERE id = ? AND user_id = ?', date, quantity, price, fees, id, uid);
+  res.status(204).end();
+});
+
 router.delete('/operations/:id', (req, res) => {
   const uid = userId(res);
   const id = Number(req.params.id);
   const op = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, uid);
   if (!op) throw new HttpError(404, 'Operación no encontrada');
+  const raw = getRawOperations(uid, op.ticker);
+  const after = adjustOperations(raw.filter((o) => o.id !== id));
   try {
-    assertNoShortSelling(adjustOperations(getRawOperations(uid, op.ticker).filter((o) => o.id !== id)));
+    assertNoShortSelling(after);
   } catch {
     throw new HttpError(409, 'No se puede borrar esta compra: quedarían ventas sin respaldo. Borrá primero esas ventas.');
   }
+  if (op.type !== 'DIVIDENDO') assertDividendsStillPossible(adjustOperations(raw), after, op.ticker, 'borrar esta operación');
   tx(() => {
     deleteImagesOf([id]);
     run('DELETE FROM operations WHERE id = ?', id);

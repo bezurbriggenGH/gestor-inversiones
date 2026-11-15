@@ -18,6 +18,64 @@ function Line({ label, value, cls = '' }: { label: string; value: string; cls?: 
   );
 }
 
+type RealReturnData = NonNullable<Portfolio['realReturn']>;
+
+/**
+ * En pesos, el rendimiento que importa es el que queda después de la inflación: con 35% de inflación,
+ * ganar 38% por año en pesos es casi quedarse igual. Por eso ese es el número grande, y el de pesos
+ * (sin descontar la inflación) va abajo, más chico.
+ */
+function RealReturn({ real, irr }: { real: RealReturnData; irr: number | null }) {
+  const nominal = irr != null ? <span className="text-sm text-muted">En pesos, sin descontar la inflación: <span className="tabular">{pct(irr)}</span> por año</span> : null;
+  if (real.irr != null) {
+    return (
+      <>
+        <span className="text-sm text-muted" title="Cuánto creció tu plata por año por encima de la inflación (índice UVA), considerando cuándo entró y salió cada peso">
+          Rendimiento por año, descontada la inflación
+        </span>
+        <span className={`tabular text-3xl font-semibold ${tone(real.irr)}`}>{pct(real.irr)}</span>
+        <span className="text-sm text-muted">{real.irr >= 0 ? 'Le ganás a la inflación' : 'Por debajo de la inflación'}</span>
+        {nominal}
+      </>
+    );
+  }
+  // Menos de un año: no se anualiza, se dice para todo el período
+  return (
+    <>
+      <span className="text-sm text-muted">Contra la inflación, en todo el período</span>
+      {real.pct != null ? (
+        <span className={`tabular text-3xl font-semibold ${tone(real.pct)}`}>{pct(real.pct)}</span>
+      ) : (
+        // Sacaste más de lo que esa plata valdría con inflación: no hay porcentaje, se dice en plata
+        <span className={`tabular text-3xl font-semibold ${tone(real.gain)}`}>{money(real.gain, 'ARS', true)}</span>
+      )}
+      <span className="text-sm text-muted">
+        {(real.pct ?? real.gain) >= 0 ? 'Por encima' : 'Por debajo'} de la inflación{real.pct == null && ', en pesos de hoy'}
+      </span>
+      <span className="text-xs text-muted">Se mide por año cuando tus operaciones cumplen un año</span>
+    </>
+  );
+}
+
+/** En dólares (o sin datos de inflación): el rendimiento por año, y contra la inflación como dato aparte. */
+function NominalReturn({ real, irr }: { real: Portfolio['realReturn']; irr: number | null }) {
+  return (
+    <>
+      <span className="text-sm text-muted" title="Rendimiento anual considerando cuándo entró y salió cada peso">
+        Rendimiento por año
+      </span>
+      <span className={`tabular text-3xl font-semibold ${irr != null ? tone(irr) : 'text-muted'}`}>{irr != null ? pct(irr) : '—'}</span>
+      {irr == null && <span className="text-xs text-muted">Se mide por año cuando tus operaciones cumplen un año</span>}
+      {real?.irr != null && (
+        <span className="text-sm">
+          <span className={`tabular ${tone(real.irr)}`}>{pct(real.irr)}</span>{' '}
+          <span className="text-muted">por año {real.irr >= 0 ? 'por encima' : 'por debajo'} de la inflación en pesos</span>
+        </span>
+      )}
+    </>
+  );
+}
+
 /** Lo más importante arriba: cuánto vale, cuánto ganaste en total y si le ganaste a la inflación. */
 export function PortfolioSummary({ data, history }: { data: Portfolio; history?: History }) {
   const { currency } = useSettings();
@@ -67,29 +125,7 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
       </div>
 
       <div className={`${CARD} md:col-span-2 xl:col-span-1`}>
-        <span className="text-sm text-muted" title="Rendimiento anual considerando cuándo entró y salió cada peso">
-          Rendimiento por año
-        </span>
-        <span className={`tabular text-3xl font-semibold ${irr != null ? tone(irr) : 'text-muted'}`}>{irr != null ? pct(irr) : '—'}</span>
-        {irr == null && <span className="text-xs text-muted">Se mide por año cuando tus operaciones cumplen un año</span>}
-        {real?.irr != null ? (
-          // También por año, para que se pueda comparar con el número de arriba
-          <span className="text-sm" title={real.pct != null ? `En todo el período: ${pct(real.pct)} contra la inflación` : undefined}>
-            <span className={`tabular ${tone(real.irr)}`}>{pct(real.irr)}</span>{' '}
-            <span className="text-muted">por año {real.irr >= 0 ? 'por encima' : 'por debajo'} de la inflación</span>
-          </span>
-        ) : real?.pct != null ? (
-          <span className="text-sm">
-            <span className={`tabular ${tone(real.pct)}`}>{pct(real.pct)}</span>{' '}
-            <span className="text-muted">{real.pct >= 0 ? 'por encima' : 'por debajo'} de la inflación en todo el período</span>
-          </span>
-        ) : real ? (
-          // Sacaste más de lo que esa plata valdría con inflación: no hay porcentaje, se dice en plata
-          <span className="text-sm">
-            <span className={`tabular ${tone(real.gain)}`}>{money(real.gain, 'ARS', true)}</span>{' '}
-            <span className="text-muted">{real.gain >= 0 ? 'por encima' : 'por debajo'} de la inflación, en pesos de hoy</span>
-          </span>
-        ) : null}
+        {currency === 'ARS' && real ? <RealReturn real={real} irr={irr} /> : <NominalReturn real={real} irr={irr} />}
       </div>
 
       {data.fx && (

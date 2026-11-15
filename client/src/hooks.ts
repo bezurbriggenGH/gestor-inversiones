@@ -7,7 +7,8 @@ export function usePortfolio() {
   return useQuery({
     queryKey: ['portfolio', currency, fxKind],
     queryFn: () => api.portfolio(currency, fxKind),
-    refetchInterval: 5 * 60_000,
+    // Si el servidor no llegó a traer los precios nuevos, se vuelve a preguntar a los pocos segundos
+    refetchInterval: (query) => (query.state.data?.updating ? 3_000 : 5 * 60_000),
     placeholderData: (prev) => prev,
   });
 }

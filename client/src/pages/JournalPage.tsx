@@ -5,7 +5,7 @@ import { useJournal } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, marketText } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
 import { Patterns, SoldSummary, WinsSummary, soldWithinText } from '../components/Balance';
 
 function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; sub?: string }) {
@@ -110,9 +110,7 @@ export function JournalPage() {
               </div>
               {e.note_title && <p className="text-sm">“{e.note_title}”</p>}
               <p className="text-xs text-muted">{explainVerdict(e)}</p>
-              {marketText(e) && (
-                <p className={`text-xs ${e.market!.beat ? 'text-up' : 'text-down'}`}>{marketText(e)}</p>
-              )}
+              <MarketLine type={e.type} market={e.market} days={e.verdictDays} />
               {soldWithinText(e, currency) && <p className="tabular text-xs">{soldWithinText(e, currency)}</p>}
               {e.missed != null && Math.abs(e.missed) >= 0.005 && (
                 <p className="tabular text-xs text-muted">

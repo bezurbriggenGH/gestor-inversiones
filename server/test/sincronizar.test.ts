@@ -5,6 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { all, run } from '../src/db.ts';
 import { dueForSync, syncAll } from '../src/services/sync.ts';
+import { waitAtMost } from '../src/util.ts';
 
 // El dólar y los índices figuran como recién actualizados: acá solo se prueban los activos
 for (const key of ['fx', 'fx-history', 'indices']) run('INSERT INTO sync_state (key, value) VALUES (?, ?)', key, Date.now());
@@ -107,5 +108,39 @@ describe('Cada cuánto se actualiza un activo', () => {
     const sabado = Date.parse('2026-11-14T15:00:00-03:00');
     const viernesNoche = Date.parse('2026-11-13T20:00:00-03:00');
     assert.equal(dueForSync(viernesNoche, true, sabado), false);
+  });
+});
+
+describe('La portada no espera a Yahoo más de la cuenta', () => {
+  const later = <T,>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+
+  test('si la actualización termina a tiempo, se usa su resultado', async () => {
+    assert.deepEqual(await waitAtMost(later(5, ['error de Yahoo']), 200), { done: true, value: ['error de Yahoo'] });
+  });
+
+  test('si tarda más, se sigue sin ella (y la actualización termina igual)', async () => {
+    let finished = false;
+    const slow = later(100, 'ok').then((v) => ((finished = true), v));
+    const start = Date.now();
+    assert.deepEqual(await waitAtMost(slow, 20), { done: false });
+    assert.ok(Date.now() - start < 90);
+    await slow;
+    assert.equal(finished, true);
+  });
+
+  test('si falla después de dejar de esperarla, no tira abajo el servidor', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    const failing = new Promise((_, reject) => setTimeout(() => reject(new Error('Yahoo caído')), 30));
+    failing.catch(() => {}); // quien la creó se ocupa de su error (como hace la ruta)
+    assert.deepEqual(await waitAtMost(failing, 5), { done: false });
+    await new Promise((r) => setTimeout(r, 60));
+    process.off('unhandledRejection', onUnhandled);
+    assert.deepEqual(unhandled, []);
+  });
+
+  test('si falla antes, el error llega a quien espera', async () => {
+    await assert.rejects(waitAtMost(Promise.reject(new Error('sin conexión')), 50), /sin conexión/);
   });
 });

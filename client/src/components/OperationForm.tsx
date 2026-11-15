@@ -19,16 +19,24 @@ export function OperationForm({
   type,
   holding,
   prefill,
+  editId,
+  notice,
   onClose,
 }: {
   ticker: string;
   type: OperationType;
   holding: number;
   prefill?: OperationPrefill;
+  /** Para corregir una operación ya cargada: se guardan fecha, cantidad, precio y comisiones. */
+  editId?: number;
+  /** Aclaración arriba del formulario */
+  notice?: string;
   onClose: () => void;
 }) {
   const isDividend = type === 'DIVIDENDO';
-  const isSell = type === 'VENTA';
+  const editing = editId != null;
+  // Al corregir, cuánto tenías depende de la fecha: lo controla el servidor con todas tus operaciones
+  const isSell = type === 'VENTA' && !editing;
   const [date, setDate] = useState(prefill?.date ?? todayIso());
   const [quantity, setQuantity] = useState(prefill?.quantity != null ? String(prefill.quantity) : isDividend ? String(holding || '') : '');
   const [price, setPrice] = useState(prefill?.price != null ? String(prefill.price) : '');
@@ -51,17 +59,11 @@ export function OperationForm({
   }, [closeAt.data, priceTouched]);
 
   const save = useMutation({
-    mutationFn: () =>
-      api.addOperation(ticker, {
-        type,
-        date,
-        quantity: Number(quantity),
-        price: Number(price),
-        fees: Number(fees || 0),
-        note_title: title,
-        note_body: body,
-        note_link: link,
-      }),
+    mutationFn: async () => {
+      const amounts = { date, quantity: Number(quantity), price: Number(price), fees: Number(fees || 0) };
+      if (editId != null) await api.updateOperation(editId, amounts);
+      else await api.addOperation(ticker, { type, ...amounts, note_title: title, note_body: body, note_link: link });
+    },
     onSuccess: () => {
       DATA_KEYS.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
       onClose();
@@ -75,7 +77,7 @@ export function OperationForm({
   const tooMany = isSell && q > holding;
 
   return (
-    <Modal title={`Registrar ${TITLES[type]} de ${ticker}`} onClose={onClose}>
+    <Modal title={`${editing ? 'Corregir' : 'Registrar'} ${TITLES[type]} de ${ticker}`} onClose={onClose}>
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
@@ -83,6 +85,7 @@ export function OperationForm({
           save.mutate();
         }}
       >
+        {notice && <p className="rounded-lg bg-bg px-4 py-3 text-xs text-muted">{notice}</p>}
         <div className="grid grid-cols-2 gap-4">
           <Field label={isDividend ? 'Fecha de pago' : 'Fecha'}>
             <input type="date" max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
@@ -136,7 +139,7 @@ export function OperationForm({
         </div>
         {tooMany && <p className="text-xs text-down">No podés vender más de lo que tenés.</p>}
 
-        {!isDividend && (
+        {!isDividend && !editing && (
           <details className="rounded-lg border border-line p-3" open>
             <summary className="cursor-pointer text-sm text-muted">Justificación (opcional, alimenta tu Diario de decisiones)</summary>
             <div className="mt-3 flex flex-col gap-3">
@@ -155,7 +158,7 @@ export function OperationForm({
 
         <ErrorBox error={save.error} />
         <Button type="submit" variant="primary" disabled={save.isPending || tooMany || q <= 0 || p <= 0}>
-          {save.isPending ? 'Guardando…' : `Registrar ${TITLES[type]}`}
+          {save.isPending ? 'Guardando…' : editing ? 'Guardar cambios' : `Registrar ${TITLES[type]}`}
         </Button>
       </form>
     </Modal>

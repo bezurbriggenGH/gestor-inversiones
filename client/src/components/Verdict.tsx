@@ -1,4 +1,4 @@
-import type { JournalEntry, Verdict } from '../api';
+import type { JournalEntry, OperationType, Verdict } from '../api';
 import { pct, tone } from '../format';
 
 const STYLE: Record<Verdict, string> = {
@@ -42,21 +42,31 @@ export function HorizonList({ entry }: { entry: JournalEntry }) {
   );
 }
 
+type MarketInfo = { type: OperationType; market: JournalEntry['market']; days: number | null };
+
 /** "El S&P 500 subió 10% en esos 90 días: tu compra anduvo 4,5% peor que el mercado." */
-export function marketText(e: JournalEntry): string | null {
-  const m = e.market;
-  if (!m || e.verdictDays == null) return null;
+export function marketText({ type, market: m, days }: MarketInfo): string | null {
+  if (!m || days == null) return null;
   const moved = `${m.change >= 0 ? 'subió' : 'bajó'} ${pct(Math.abs(m.change)).replace('+', '')}`;
+  const start = `El ${m.label} ${moved} en esos ${days} días`;
+  if (Math.abs(m.relative) < 0.00005) return `${start}: ${type === 'COMPRA' ? 'tu compra' : 'lo que vendiste'} anduvo igual que el mercado.`;
   const diff = pct(Math.abs(m.relative)).replace('+', '');
   const how =
-    e.type === 'COMPRA'
+    type === 'COMPRA'
       ? m.beat
         ? `tu compra le ganó al mercado por ${diff}`
         : `tu compra anduvo ${diff} peor que el mercado`
       : m.beat
         ? `lo que vendiste anduvo ${diff} peor que el mercado: salir no te costó`
-        : `lo que vendiste le ganó al mercado por ${diff}`;
-  return `El ${m.label} ${moved} en esos ${e.verdictDays} días: ${how}.`;
+        : `lo que vendiste le ganó al mercado por ${diff}: te convenía quedártelo`;
+  return `${start}: ${how}.`;
+}
+
+/** La frase de arriba, en verde si la decisión le ganó al mercado y en rojo si no. */
+export function MarketLine({ className = 'text-xs', ...info }: MarketInfo & { className?: string }) {
+  const text = marketText(info);
+  if (!text) return null;
+  return <p className={`${className} ${info.market!.beat ? 'text-up' : 'text-down'}`}>{text}</p>;
 }
 
 /** Ya pasó el plazo para evaluarla, pero no hay precios guardados de esa época. */

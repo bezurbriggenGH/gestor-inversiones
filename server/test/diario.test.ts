@@ -119,6 +119,13 @@ describe('Diario de decisiones: contra el mercado', () => {
     assert.deepEqual(j.vsMarket, { compared: 2, beat: 1 });
   });
 
+  test('el gráfico del activo recibe la misma comparación', () => {
+    const compra = buildJournal(3, 'ARS', 'bolsa', 'CED').entries.find((e) => e.type === 'COMPRA')!;
+    const d = decisionOf(compra);
+    assert.equal(d.market!.label, 'S&P 500');
+    assert.equal(d.market!.beat, false);
+  });
+
   test('sin datos del índice en esas fechas no se compara (las acciones contra un Merval vacío)', () => {
     const [entry] = buildJournal(1, 'ARS', 'bolsa').entries;
     assert.equal(entry.market, null);

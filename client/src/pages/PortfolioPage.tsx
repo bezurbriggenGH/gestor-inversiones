@@ -20,25 +20,12 @@ function Evolution({ history }: { history: History }) {
     [history],
   );
   if (history.points.length < 2) return null;
-  const p = history.portfolio!;
   return (
     <section className="rounded-xl bg-panel p-5">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-medium">Evolución de tu cartera</h2>
-        <p className="text-sm text-muted">
-          Ganancia total <span className={`tabular font-medium ${tone(p.gain)}`}>{money(p.gain, currency, true)}</span>
-          {p.irr != null && (
-            <>
-              {' · '}TIR anual <span className={`tabular font-medium ${tone(p.irr)}`}>{pct(p.irr)}</span>
-            </>
-          )}
-        </p>
-      </div>
+      {/* La ganancia total y el rendimiento por año ya están en los recuadros de arriba */}
+      <h2 className="mb-4 font-medium">Evolución de tu cartera</h2>
       <LineChart lines={lines} currency={currency} height="h-64" />
-      <p className="mt-2 text-xs text-muted">
-        "Plata puesta" es lo que invertiste menos lo que retiraste por ventas y dividendos. La TIR es tu rendimiento anual considerando
-        cuándo entró y salió cada peso.
-      </p>
+      <p className="mt-2 text-xs text-muted">"Plata puesta" es lo que invertiste menos lo que retiraste por ventas y dividendos.</p>
     </section>
   );
 }
@@ -218,6 +205,11 @@ export function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      {data.updating && (
+        <p className="rounded-lg bg-panel px-3 py-2 text-xs text-muted">
+          Actualizando precios… Mientras tanto ves los últimos guardados; se completan solos en unos segundos.
+        </p>
+      )}
       <PortfolioSummary data={data} history={history.data} />
       <Insights data={data} history={history.data} />
 

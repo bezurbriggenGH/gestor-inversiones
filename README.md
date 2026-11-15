@@ -5,11 +5,11 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 
 ## Funciones
 
-- **Cartera**: cuánto vale, cuánto ganaste en total (en lo que tenés, en ventas y en dividendos), rendimiento por año y contra la inflación.
+- **Cartera**: cuánto vale, cuánto ganaste en total (en lo que tenés, en ventas y en dividendos) y el rendimiento por año. Viendo en pesos, el número grande es el rendimiento descontada la inflación (el de pesos sin descontar va abajo): con inflación alta, ganar 38% por año en pesos puede ser quedarse igual. Si Yahoo tarda, la portada no lo espera más de 2 segundos: muestra los últimos precios guardados y se completa sola.
 - **Resumen en palabras**: qué movió tu cartera hoy, cómo va el mes, si le ganás al dólar, tu mejor y peor inversión, y avisos de concentración.
 - **Datos de cada acción**: rango del último año, cuánto subió o bajó (1 mes a 5 años), cuánto se mueve en un día normal, peor caída y cuánto tiene que subir para volver a tu precio promedio.
 - **Simulador**: un monto en una fecha pasada contra dólar, plazo fijo, inflación y pesos guardados, con dividendos (netos de la retención habitual) y el peor momento del camino.
-- **Evolución**: gráfico del valor de la cartera contra la plata puesta, y TIR anual.
+- **Evolución**: gráfico del valor de la cartera contra la plata puesta.
 - **Rendimiento mes a mes**: calendario con el rendimiento de cada mes y de cada año.
 - **Gráfico de cada activo**: línea o velas, medias móviles de 50 y 200 días, tus compras y ventas, y la línea de tu precio promedio.
 - **CCL implícito de los CEDEARs**: a qué dólar estás comprando y si el CEDEAR está caro o barato contra el CCL.
@@ -35,7 +35,8 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
   muestra quién subió más (todo arranca en 100) contra la inflación oficial, y una línea dice si tu sueldo le ganó o perdió contra la
   inflación y qué gasto subió más. "Repetir anterior" completa un mes con los montos del mes previo.
 - **Informe**: todo lo importante en una hoja para guardar como PDF o imprimir.
-- **El gráfico como diario**: cada compra y venta marcada sobre el precio y pintada según cómo salió (verde acierto, rojo error, gris sin veredicto). Al pasar el cursor se ve por qué la hiciste, la foto que guardaste y cuánto ganaste o dejaste de ganar.
+- **El gráfico como diario**: cada compra y venta marcada sobre el precio y pintada según cómo salió (verde acierto, rojo error, gris sin veredicto). Al pasar el cursor se ve por qué la hiciste, la foto que guardaste, cuánto ganaste o dejaste de ganar y si le ganó al mercado.
+- **Corregir una operación**: fecha, cantidad, precio y comisiones, con los mismos controles que al cargarla. No deja que el cambio deje ventas sin respaldo ni dividendos por más acciones de las que tenías. La justificación y las fotos no se tocan.
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias.
@@ -105,7 +106,8 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta, que el Diario de decisiones juzgue en dólares y la comparación contra el mercado |
 | `server/test/balance.test.ts` | ¿Y si no hubieras tocado nada?, comisiones, qué pasó con lo que vendiste y patrones del Diario |
-| `server/test/sincronizar.test.ts` | Pedidos a Yahoo: de a pocos, sin insistir después de un error |
+| `server/test/sincronizar.test.ts` | Pedidos a Yahoo: de a pocos, sin insistir después de un error, y que la portada no los espere más de la cuenta |
+| `server/test/editar.test.ts` | Corregir una operación: mismos controles que al cargarla, ventas y dividendos que quedarían sin respaldo, splits y operaciones ajenas |
 | `server/test/importador.test.ts` | Números ("1.234,56", "0.125") y fechas de los archivos de los brokers |
 | `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
 | `server/test/validaciones.test.ts` | Casos límite cargados desde la app: cantidades negativas o con decimales, ventas de más, fechas imposibles, dividendos imposibles, borrar activos |
@@ -166,8 +168,9 @@ server/src/
   db.ts          → base de datos y migraciones
   routes.ts      → endpoints de la API REST
 client/src/
-  pages/         → pantallas
+  pages/         → pantallas (la portada viene con la app; las demás se bajan al abrirlas)
   components/    → gráficos, formularios, sidebar
+  lazyPage.tsx   → carga de pantallas a pedido (si la app se recompiló estando abierta, recarga una vez)
 ```
 
 ## Criterios de cálculo

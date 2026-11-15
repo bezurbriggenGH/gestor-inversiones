@@ -67,6 +67,24 @@ export function lastMarketTime(now: number = Date.now()): number {
 const FETCH_TIMEOUT_MS = 10_000;
 
 /**
+ * Espera una promesa como mucho `ms` milisegundos. Si termina antes, devuelve su resultado; si no,
+ * devuelve `done: false` y la promesa sigue corriendo (su resultado se aprovecha más adelante).
+ */
+export async function waitAtMost<T>(promise: Promise<T>, ms: number): Promise<{ done: true; value: T } | { done: false }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<{ done: false }>((resolve) => {
+    timer = setTimeout(() => resolve({ done: false }), ms);
+  });
+  try {
+    // Promise.race queda escuchando las dos: si la promesa falla después de dejar de esperarla,
+    // ese error ya está atendido y no tira abajo el servidor (lo prueba sincronizar.test.ts)
+    return await Promise.race([promise.then((value) => ({ done: true as const, value })), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * fetch con tiempo límite: si la fuente no responde en 10 segundos, se corta y se sigue
  * con lo guardado. Sin esto, una API colgada dejaría la pantalla cargando para siempre.
  */

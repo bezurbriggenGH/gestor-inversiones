@@ -618,5 +618,7 @@ export function buildOperationDetail(userId: number, id: number, currency: Curre
     fxKind: kind,
     asset: { ticker: asset.ticker, name: asset.name, type: asset.type },
     operation: convertOp(op, conv, fx, realizedByOp),
+    // Tal como se cargó (en pesos y antes de ajustar por splits): es lo que se corrige al editarla
+    loaded: { date: raw.date, quantity: raw.quantity, price: raw.price, fees: raw.fees },
   };
 }

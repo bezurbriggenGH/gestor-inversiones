@@ -77,6 +77,8 @@ export interface Portfolio {
   review: Review;
   lastSync: number | null;
   errors: string[];
+  /** Los precios se están actualizando todavía: lo que se ve es lo último guardado. */
+  updating: boolean;
 }
 
 /** Lo que conviene revisar de la cartera (Composición) */
@@ -144,6 +146,8 @@ export interface OperationDecision {
   missed: number | null;
   /** Solo en compras: lo que vendiste de ese activo dentro del plazo del veredicto, y con qué resultado. */
   soldWithin: { quantity: number; realized: number } | null;
+  /** Qué hizo el mercado en el mismo plazo, y si la decisión le ganó. */
+  market: JournalEntry['market'];
   /** Ya pasó el plazo pero no hay precios guardados de esa época. */
   noData: boolean;
 }
@@ -200,6 +204,8 @@ export interface OperationDetail {
   fxKind: FxKind;
   asset: { ticker: string; name: string; type: AssetType };
   operation: Operation;
+  /** Tal como se cargó (en pesos y antes de ajustar por splits): lo que se corrige al editarla. */
+  loaded: { date: string; quantity: number; price: number; fees: number };
   images: OperationImage[];
 }
 
@@ -455,6 +461,8 @@ export const api = {
   addOperation: (t: string, op: NewOperation) => post<{ id: number }>(`/assets/${t}/operations`, op),
   operation: (id: number, c: Currency, k: FxKind) => request<OperationDetail>(`/operations/${id}?${q(c, k)}`),
   deleteOperation: (id: number) => del(`/operations/${id}`),
+  updateOperation: (id: number, op: Pick<NewOperation, 'date' | 'quantity' | 'price' | 'fees'>) =>
+    request<void>(`/operations/${id}`, { method: 'PUT', body: JSON.stringify(op) }),
   updateNote: (id: number, note: { note_title: string; note_body: string; note_link: string }) =>
     request<void>(`/operations/${id}/note`, { method: 'PUT', body: JSON.stringify(note) }),
   addImage: (operationId: number, image: Blob) =>

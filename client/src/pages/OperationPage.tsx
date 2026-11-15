@@ -6,8 +6,9 @@ import { DATA_KEYS, useJournal, useOperation } from '../hooks';
 import { useSettings } from '../settings';
 import { FX_LABEL, date, money, num, pct, tone } from '../format';
 import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict, lacksPrices } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
 import { OperationPhotos } from '../components/OperationPhotos';
+import { OperationForm } from '../components/OperationForm';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -102,6 +103,7 @@ export function OperationPage() {
   const journal = useJournal();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [fixing, setFixing] = useState(false);
 
   const remove = useMutation({
     mutationFn: () => api.deleteOperation(Number(id)),
@@ -173,6 +175,7 @@ export function OperationPage() {
             <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} noData={lacksPrices(entry)} />
           </div>
           <p className="text-sm text-muted">{explainVerdict(entry)}</p>
+          <MarketLine className="text-sm" type={entry.type} market={entry.market} days={entry.verdictDays} />
           <HorizonList entry={entry} />
         </section>
       )}
@@ -187,8 +190,25 @@ export function OperationPage() {
       <hr className="border-line" />
       <OperationPhotos operationId={op.id} images={data.images} />
 
+      {fixing && (
+        <OperationForm
+          ticker={data.asset.ticker}
+          type={op.type}
+          holding={0}
+          prefill={data.loaded}
+          editId={op.id}
+          notice={
+            op.splitFactor && op.splitFactor !== 1
+              ? `Se corrige tal como la cargaste, antes del cambio de ratio: ${num(data.loaded.quantity)} a ${money(data.loaded.price, 'ARS')}. El ajuste se vuelve a aplicar solo.`
+              : 'Corregí lo que cargaste mal. La justificación y las fotos quedan como están.'
+          }
+          onClose={() => setFixing(false)}
+        />
+      )}
+
       <ErrorBox error={remove.error} />
-      <div>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => setFixing(true)}>Corregir datos</Button>
         <Button variant="danger" disabled={remove.isPending} onClick={() => window.confirm('¿Borrar esta operación?') && remove.mutate()}>
           Borrar operación
         </Button>
