@@ -11,6 +11,7 @@
 // 2. Dividendos imposibles: Yahoo a veces informa montos mil veces más grandes que el
 //    real (por ejemplo ACN pagando $32.822 por un CEDEAR que vale $5.200). Se descartan.
 import { all, run, tx } from '../db.ts';
+import { usSymbolOf } from '../cedears.ts';
 
 /** Un CEDEAR no sube ni baja tanto en un día por el mercado: un salto así es un cambio de ratio. */
 const JUMP = 1.8;
@@ -32,20 +33,48 @@ function roundFactor(x: number): number {
   return x >= 1 ? nice : 1 / nice;
 }
 
+/** Último valor con fecha igual o anterior (la serie viene ordenada por fecha). */
+function valueAt(series: { date: string; value: number }[], date: string): number | null {
+  let found: number | null = null;
+  for (const p of series) {
+    if (p.date > date) break;
+    found = p.value;
+  }
+  return found;
+}
+
 /**
  * Busca saltos de precio que sean cambios de ratio.
  * factor = cuántas unidades nuevas hay por cada vieja (precio de 25.100 a 12.697 → 2).
+ *
+ * Con `us` (el precio de la acción en EE.UU., en dólares) se confirma: en un cambio de ratio el CEDEAR
+ * se parte y la acción de afuera no se mueve. Si la de afuera también se desplomó, es una caída de verdad
+ * y no se toca: sin este control, una caída de 55% (10.000 → 4.500) se tomaba como un ratio ×2,22, la
+ * tenencia pasaba de 100 a 222 y la pérdida desaparecía. Si EE.UU. no tiene el precio de esos días
+ * todavía, tampoco se ajusta: se vuelve a mirar en la próxima actualización.
+ * Sin `us` (CEDEARs que no están en la tabla de ratios) se decide solo con el precio de BYMA.
  */
-export function detectRatioChanges(rows: { date: string; close: number }[]): { date: string; factor: number }[] {
+export function detectRatioChanges(
+  rows: { date: string; close: number }[],
+  us?: { date: string; value: number }[],
+): { date: string; factor: number }[] {
   const changes: { date: string; factor: number }[] = [];
   for (let i = 1; i < rows.length; i++) {
-    const x = rows[i - 1].close / rows[i].close;
+    let x = rows[i - 1].close / rows[i].close;
     if (x < JUMP && x > 1 / JUMP) continue;
     // El nivel nuevo tiene que mantenerse: si fue un dato suelto mal cargado, se ignora
     const before = median(rows.slice(Math.max(0, i - WINDOW), i).map((r) => r.close));
     const after = median(rows.slice(i, i + WINDOW).map((r) => r.close));
     const y = before / after;
     if (y < JUMP && y > 1 / JUMP) continue;
+    if (us) {
+      const usBefore = valueAt(us, rows[i - 1].date);
+      const usAfter = us.length && us[us.length - 1].date >= rows[i].date ? valueAt(us, rows[i].date) : null;
+      if (!usBefore || !usAfter) continue; // sin el precio de afuera, no se puede confirmar
+      // Lo que el precio de afuera no explica: si queda cerca de 1, fue una caída (o suba) real
+      x = x / (usBefore / usAfter);
+      if (x < JUMP && x > 1 / JUMP) continue;
+    }
     changes.push({ date: rows[i].date, factor: roundFactor(x) });
   }
   return changes;
@@ -53,7 +82,12 @@ export function detectRatioChanges(rows: { date: string; close: number }[]): { d
 
 function fixRatioChanges(ticker: string): void {
   const rows = all<{ date: string; close: number }>('SELECT date, close FROM prices WHERE ticker = ? ORDER BY date', ticker);
-  const changes = detectRatioChanges(rows);
+  // CEDEARs de la tabla: se confirma con el precio de la acción en EE.UU. (lo guarda sync.ts)
+  const symbol = usSymbolOf(ticker);
+  const us = symbol
+    ? all<{ date: string; value: number }>('SELECT date, value FROM index_values WHERE series = ? ORDER BY date', `us:${symbol}`)
+    : undefined;
+  const changes = detectRatioChanges(rows, us);
   if (changes.length === 0) return;
   tx(() => {
     for (const { date, factor } of changes) {

@@ -179,15 +179,20 @@ export function opTotal(op: Pick<OperationRow, 'type' | 'quantity' | 'price' | '
  * recuperaste con ventas y dividendos, en su punto más alto.
  * Es la base del % de ganancia total. Sumar todas las compras históricas no sirve:
  * si comprás y vendés varias veces, la misma plata se contaría muchas veces.
+ * Se mira al cierre de cada día: si un día vendés por $2 M y con esa plata comprás otra cosa, no pusiste
+ * $2 M más de tu bolsillo. Antes se sumaban las compras del día antes de restar las ventas, y eso armaba
+ * un pico que nunca existió (el 16/10/2026: $4,82 M + $2,08 M = $6,90 M, en vez de $4,85 M).
  */
 export function peakCapital(ops: OperationRow[], conv: Converter): number {
   let net = 0;
   let peak = 0;
-  for (const op of sortOps(ops)) {
+  const sorted = sortOps(ops);
+  sorted.forEach((op, i) => {
     const total = conv(opTotal(op), op.date);
     net += op.type === 'COMPRA' ? total : -total;
-    peak = Math.max(peak, net);
-  }
+    // Último movimiento del día: recién ahí se sabe cuánto quedó puesto
+    if (sorted[i + 1]?.date !== op.date) peak = Math.max(peak, net);
+  });
   return peak;
 }
 
@@ -583,6 +588,16 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
 
   const sum = (k: keyof Position) => positions.reduce((acc, p) => acc + (p[k] as number), 0);
   const marketValue = sum('marketValue');
+  // El mismo valor en la otra moneda, con el dólar del día de cada precio: el mismo que usa la vista en
+  // dólares. Antes se usaba el dólar de hoy, y un domingo la vista en pesos decía ≈ US$ 5.665 y la de
+  // dólares US$ 5.691 (el MEP del viernes contra el de hoy).
+  const otherValue = fx.empty
+    ? null
+    : positions.reduce((acc, p) => {
+        if (!p.priceDate || p.marketValue === 0) return acc;
+        const rate = fx.at(p.priceDate);
+        return acc + (currency === 'ARS' ? p.marketValue / rate : p.marketValue * rate);
+      }, 0);
   const costBasis = sum('costBasis');
   const unrealized = sum('unrealized');
   const realized = sum('realized');
@@ -614,6 +629,7 @@ export function buildPortfolio(userId: number, currency: Currency, kind: FxKind)
       totalGainPct: peak > 0 ? totalGain / peak : 0,
       dayChange,
       dayChangePct: yesterdayValue > 0 ? dayChange / yesterdayValue : 0,
+      otherValue,
     },
     positions: positions.map((p) => ({ ...p, weight: marketValue > 0 ? p.marketValue / marketValue : 0 })),
     // En qué sectores y países está puesta la plata

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { buildCosts, buildHoldComparison } from '../src/services/review.ts';
 import { buildJournal, decisionOf } from '../src/services/journal.ts';
+import { buildPortfolio } from '../src/services/portfolio.ts';
 
 let nextUser = 1;
 /** Un usuario nuevo con sus operaciones: [ticker, tipo, fecha, cantidad, precio, comisión]. */
@@ -147,10 +148,6 @@ describe('Qué pasó con lo que vendiste', () => {
   test('viendo en pesos son $50 de hoy, no los $200 que da restar pesos de fechas distintas', () => {
     const j = buildJournal(id, 'ARS', 'bolsa');
     assert.ok(near(j.entries.find((e) => e.type === 'VENTA')!.missed!, 50));
-    assert.ok(near(j.sold.missed, 50));
-    assert.equal(j.sold.missedCount, 1);
-    assert.equal(j.sold.saved, 0);
-    assert.ok(near(j.sold.net, -50)); // en conjunto, vender no me convino
   });
 });
 
@@ -239,5 +236,19 @@ describe('Compra con mal momento, pero vendida antes con ganancia', () => {
       ['AAA', 'VENTA', '2025-06-02', 10, 200],
     ]);
     assert.equal(buildJournal(otro, 'ARS', 'bolsa').entries.find((e) => e.type === 'COMPRA')!.soldWithin, null);
+  });
+});
+
+describe('El valor en la otra moneda', () => {
+  // Tengo 10 AAA que hoy (01/06) valen $200 cada una, con el dólar de ese día a $1.250
+  const id = user([['AAA', 'COMPRA', '2025-01-02', 10, 100]]);
+
+  test('en pesos y en dólares dan lo mismo, con el dólar del día del precio: $2.000 ≈ US$ 1,60', () => {
+    const ars = buildPortfolio(id, 'ARS', 'bolsa').summary;
+    const usd = buildPortfolio(id, 'USD', 'bolsa').summary;
+    assert.equal(ars.marketValue, 2000);
+    assert.ok(near(ars.otherValue!, 1.6)); // 2.000 ÷ 1.250
+    assert.ok(near(usd.marketValue, 1.6));
+    assert.ok(near(usd.otherValue!, 2000)); // la vuelta da lo mismo
   });
 });

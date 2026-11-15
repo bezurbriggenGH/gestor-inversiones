@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type SimAlternative, type Simulation } from '../api';
 import { useSettings } from '../settings';
+import { sameView } from '../hooks';
 import { date, money, num, pct, todayIso, tone } from '../format';
 import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
 import { LineChart, type ChartLine } from '../components/LineChart';
@@ -188,7 +189,7 @@ export function SimulatorPage() {
     queryFn: () => api.simulate(params!.ticker, params!.amount, params!.date, currency, fxKind),
     enabled: params != null,
     retry: false,
-    placeholderData: (prev) => prev,
+    placeholderData: sameView(currency, fxKind),
   });
 
   const run = (t = ticker) => {

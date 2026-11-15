@@ -183,6 +183,9 @@ async function downloadAsset(ticker: string, symbol: string): Promise<void> {
     chart = await fetchChart(symbol, { range: '10y' });
     full = true;
   }
+  // Primero el precio en EE.UU.: al guardar los de BYMA se controla con él si un salto es un cambio de
+  // ratio (clean.ts), y tiene que estar el del mismo día
+  await syncUnderlying(ticker);
   const stored = get<{ n: number }>('SELECT COUNT(*) AS n FROM prices WHERE ticker = ?', ticker)?.n ?? 0;
   // Solo se reemplaza el historial si Yahoo devolvió uno completo (a veces devuelve solo el día de hoy)
   if (full && chart.bars.length >= stored * 0.9) run('DELETE FROM prices WHERE ticker = ?', ticker);
@@ -190,7 +193,6 @@ async function downloadAsset(ticker: string, symbol: string): Promise<void> {
   if (!full || chart.bars.length >= stored * 0.9) markSynced(splitsKey);
   run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
   checkAlerts(ticker);
-  await syncUnderlying(ticker);
   await syncSector(ticker, symbol);
 }
 
@@ -335,9 +337,10 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
   const chart = await fetchChart(symbol, { range: '10y' });
   if (chart.bars.length === 0) throw new Error(`${ticker} no tiene precios`);
   run('INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES (?, ?, ?, ?, ?)', ticker, symbol, chart.name, type, Date.now());
+  // Antes de guardar los precios de BYMA, por el control de cambios de ratio (ver downloadAsset)
+  if (type === 'CEDEAR') await syncUnderlying(ticker);
   saveBars(ticker, chart.bars, chart.dividends, chart.splits);
   markSynced(`splits:${ticker}`);
-  if (type === 'CEDEAR') await syncUnderlying(ticker);
   await syncSector(ticker, symbol);
 }
 

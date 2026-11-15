@@ -27,7 +27,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Rendimiento real**: cuánto ganaste descontando la inflación (IPC del INDEC), en total, por año y mes a mes.
 - **Dividendos**: detecta los dividendos que pagaron tus activos y te sugiere registrarlos con la retención habitual.
 - **Diario de decisiones**: para cada compra y venta, qué hizo el precio (en dólares) 30, 90 y 180 días después. Lo principal es si cada decisión le ganó al mercado (S&P 500 o Merval) en el mismo plazo (a menos de 2% es empate); después, el porcentaje de aciertos.
-  También dónde acertás más (comprando o vendiendo, en acciones o en CEDEARs, con o sin justificación), afirmando una diferencia solo si es demasiado grande para ser casualidad y no depende de un solo activo. Comprar y vender lo mismo el mismo día se compensa y no cuenta como decisión. Contra el mercado se informa aparte para compras y para ventas, y, plegado, lo que pasó con tus ventas en plata (en dólares).
+  También dónde acertás más (comprando o vendiendo, en acciones o en CEDEARs, con o sin justificación), afirmando una diferencia solo si es demasiado grande para ser casualidad y no depende de un solo activo. Comprar y vender lo mismo el mismo día se compensa y no cuenta como decisión. Contra el mercado se informa aparte para compras y para ventas, y, plegado, en cuántas ventas ganaste plata (en dólares).
 - **¿Y si no hubieras tocado nada?**: compara lo que tenías un día, a precios de hoy, contra lo que hiciste de verdad. Dice en plata si operar te sumó o te restó. En pesos, la plata de cada compra y venta se lleva a pesos de hoy con la inflación (IPC), la misma vara que la portada.
 - **Comisiones**: cuánto pagaste por comprar y vender, por año, y qué parte de tu ganancia se llevaron. En pesos, también descontada la inflación: cada comisión en pesos de hoy, contra lo que le ganaste a la inflación.
 - **Sueldo y gastos** (opcional): cada mes cargás a mano tu sueldo y tus gastos fijos (alquiler, seguro, servicios…). Un gráfico
@@ -39,7 +39,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias. Aplica los mismos controles que el formulario (ventas sin respaldo, dividendos imposibles, fechas). Una fila es duplicada si ya hay una igual cargada, contando cuántas: si hay 2 compras idénticas y el archivo trae 3, entra 1. Además, y si una fila de un activo falla no importa ninguna de ese activo: sola, una parte dejaría una tenencia distinta a la del broker.
-- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos.
+- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos. Si Yahoo no informa un cambio de ratio de un CEDEAR de la tabla, la app lo detecta por el salto de precio y lo confirma con la acción en EE.UU.: si allá también se desplomó, es una caída real y no se toca.
 - **Buscador** con más de 170 acciones argentinas y CEDEARs.
 - **Cuentas de usuario** con email y contraseña.
 - **Instalable** en el celular o la compu (PWA).
@@ -176,6 +176,8 @@ client/src/
 ## Criterios de cálculo
 
 - **Costo por Precio Promedio Ponderado (PPP)**, comisiones incluidas.
+- **% de ganancia total**: ganancia ÷ lo máximo que llegaste a tener puesto de tu bolsillo (compras − ventas − dividendos cobrados), mirado al cierre de cada día: si un día vendés y con esa plata comprás otra cosa, no pusiste plata nueva.
+- **Controles al cargar** (a mano, al corregir y al importar): cantidades enteras, fechas reales y no anteriores a las cotizaciones del dólar, nada de vender de más, un precio de compra o venta a no más de 10 veces del cierre de ese día (un cero de más), y números escritos como se escriben (no "1e3").
 - **Resultado realizado**: ventas ya hechas (cobrado neto − costo promedio de lo vendido).
 - **Resultado no realizado**: valor de mercado de la tenencia − su costo.
 - **Dividendos**: no pueden ser por acciones que no tenías ni por más de la mitad de lo que valían (un cero de más). Ingreso aparte, neto de retenciones (30% sugerido para CEDEARs, 7% para acciones locales). Los sugeridos de un CEDEAR se calculan como los paga el broker: dividendo en dólares de la acción en EE.UU. ÷ ratio × dólar MEP de ese día. Si los precios muestran que el ratio cambió y la tabla todavía no, no se sugieren (saldrían multiplicados por el cambio).

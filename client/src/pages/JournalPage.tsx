@@ -6,7 +6,7 @@ import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { ErrorBox, Loading } from '../components/ui';
 import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
-import { Patterns, SoldSummary, WinsSummary, soldWithinText } from '../components/Balance';
+import { Patterns, WinsSummary, soldWithinText } from '../components/Balance';
 
 // Con menos decisiones evaluadas, un porcentaje dice muy poco (3 de 4 no prueba nada): no se muestra
 const MIN_JUDGED = 10;
@@ -100,7 +100,7 @@ export function JournalPage() {
 
       <Patterns journal={data} />
 
-      {(data.closed.count > 0 || data.sold.count > 0) && (
+      {data.closed.count > 0 && (
         <details className="group rounded-xl bg-panel">
           <summary className="cursor-pointer list-none px-5 py-4 font-medium">
             <span className="mr-2 inline-block text-muted transition group-open:rotate-90">›</span>
@@ -108,7 +108,6 @@ export function JournalPage() {
           </summary>
           <div className="flex flex-col gap-4 px-2 pb-2">
             <WinsSummary journal={data} />
-            <SoldSummary journal={data} />
           </div>
         </details>
       )}
@@ -169,7 +168,7 @@ export function JournalPage() {
               {e.missed != null && e.offset < 0.999 && Math.abs(e.missed) >= 0.005 && (
                 <p className="tabular text-xs text-muted">
                   Al precio de hoy: {e.missed > 0 ? 'dejaste de ganar' : 'te ahorraste de perder'}{' '}
-                  <span className={e.missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(e.missed), currency)}</span> por haber vendido.
+                  <span className={e.missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(e.missed), currency)}</span> por haber vendido (sin contar si después volviste a comprar).
                 </p>
               )}
               <HorizonList entry={e} />

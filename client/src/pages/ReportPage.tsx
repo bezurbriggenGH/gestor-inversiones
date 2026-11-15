@@ -224,14 +224,6 @@ export function ReportPage() {
             {j.closed.currency === 'USD' && ', medido en dólares'}.
           </p>
         )}
-        {j.sold.count > 0 && (
-          <p className="tabular text-sm">
-            De tus {j.sold.count} ventas: después de {j.sold.savedCount} el precio bajó (te ahorraste {money(j.sold.saved, currency, false, true)}) y
-            después de {j.sold.missedCount} subió (dejaste de ganar {money(j.sold.missed, currency, false, true)}). En conjunto, vender{' '}
-            {j.sold.net >= 0 ? 'te convino' : 'no te convino'} por{' '}
-            <span className={tone(j.sold.net)}>{money(Math.abs(j.sold.net), currency, false, true)}</span>.
-          </p>
-        )}
         {patterns.length > 0 && (
           <ul className="flex list-disc flex-col gap-1 pl-5 text-sm">
             {patterns.map((t) => (

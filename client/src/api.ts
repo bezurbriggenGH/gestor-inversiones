@@ -74,6 +74,8 @@ export interface Portfolio {
     totalGainPct: number;
     dayChange: number;
     dayChangePct: number;
+    /** Lo que vale la cartera en la otra moneda, con el dólar del día de cada precio (null sin cotizaciones) */
+    otherValue: number | null;
   };
   realReturn: { gain: number; pct: number | null; irr: number | null } | null;
   positions: PortfolioPosition[];
@@ -310,8 +312,6 @@ export interface Journal {
   /** Decisiones ya evaluadas a 90 días: cuántas le ganaron al mercado, de cuántas, y cuántas empataron (aparte). */
   vsMarket: { compared: number; beat: number; even: number; buys: { compared: number; beat: number }; sells: { compared: number; beat: number } };
   stats: Record<'all' | 'buys' | 'sells' | 'withNote' | 'withoutNote' | 'acciones' | 'cedears', JournalStats>;
-  /** Qué pasó, en plata, con todo lo que vendiste. */
-  sold: { count: number; missedCount: number; missed: number; savedCount: number; saved: number; net: number };
   /**
    * Ventas con ganancia: en cuántas ganaste plata y cuánto (las del mismo activo y día cuentan como una).
    * Siempre en dólares (en pesos solo si no hay datos del dólar), como el veredicto; `currency` dice en cuál.

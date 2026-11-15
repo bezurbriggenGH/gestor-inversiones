@@ -32,6 +32,24 @@ describe('Detectar cambios de ratio', () => {
   test('un movimiento normal del mercado no es un cambio de ratio', () => {
     assert.deepEqual(detectRatioChanges(series([...repeat(100, 10), ...repeat(70, 10)])), []);
   });
+
+  // Con el precio de la acción en EE.UU. se confirma (las fechas de series() arrancan el 01/01/2024)
+  const us = (values: number[]) => series(values).map((r) => ({ date: r.date, value: r.close }));
+
+  test('si la acción en EE.UU. también se desplomó, es una caída real: 10.000 → 4.500 no es un ratio ×2,22', () => {
+    // Sin el control, 100 CEDEARs pasaban a ser 222 y la pérdida de 55% desaparecía
+    assert.deepEqual(detectRatioChanges(series([...repeat(10_000, 10), ...repeat(4_500, 10)])), [{ date: '2024-01-11', factor: 10_000 / 4_500 }]);
+    assert.deepEqual(detectRatioChanges(series([...repeat(10_000, 10), ...repeat(4_500, 10)]), us([...repeat(100, 10), ...repeat(45, 10)])), []);
+  });
+
+  test('si la acción en EE.UU. no se movió, se confirma el cambio de ratio 2:1', () => {
+    const changes = detectRatioChanges(series([...repeat(25_100, 10), ...repeat(12_697, 10)]), us(repeat(190, 20)));
+    assert.deepEqual(changes, [{ date: '2024-01-11', factor: 2 }]);
+  });
+
+  test('sin el precio de EE.UU. de ese día todavía, no se ajusta (se vuelve a mirar en la próxima actualización)', () => {
+    assert.deepEqual(detectRatioChanges(series([...repeat(25_100, 10), ...repeat(12_697, 10)]), us(repeat(190, 10))), []);
+  });
 });
 
 describe('Corregir el historial guardado', () => {

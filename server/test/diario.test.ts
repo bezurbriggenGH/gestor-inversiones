@@ -251,7 +251,7 @@ describe('Comprar y vender lo mismo el mismo día', () => {
     assert.equal(j.entries.length, 3); // en la lista se ven
     assert.deepEqual(j.entries.filter((e) => e.date === '2026-04-02').map((e) => e.offset), [1, 1]);
     assert.equal(j.stats.all.total, 1); // solo cuenta la compra de enero
-    assert.equal(j.sold.count, 0);
+    assert.equal(j.closed.count, 0); // tampoco cuenta como venta con ganancia o pérdida
   });
 
   test('si se compensa solo una parte, cuenta lo que queda: compro 10 y vendo 4 el mismo día = compra de 6', () => {

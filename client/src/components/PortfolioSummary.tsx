@@ -85,12 +85,8 @@ export function PortfolioSummary({ data, history }: { data: Portfolio; history?:
   // De estos no se sabe cuánto variaron en el día (falta un precio): mejor decirlo que mostrar 0%
   const missing = data.positions.filter((p) => p.quantity > 0 && !p.dayKnown);
   // El mismo valor en la otra moneda, con el dólar de hoy
-  const other =
-    data.fx && data.fx.rate > 0
-      ? currency === 'ARS'
-        ? money(s.marketValue / data.fx.rate, 'USD')
-        : money(s.marketValue * data.fx.rate, 'ARS')
-      : null;
+  // El mismo valor en la otra moneda (lo calcula el servidor con el dólar del día de cada precio)
+  const other = s.otherValue != null ? money(s.otherValue, currency === 'ARS' ? 'USD' : 'ARS') : null;
 
   return (
     <section className="grid gap-3 rounded-xl bg-panel p-3 md:grid-cols-2 xl:grid-cols-3">

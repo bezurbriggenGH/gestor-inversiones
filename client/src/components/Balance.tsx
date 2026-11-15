@@ -248,39 +248,6 @@ export function WinsSummary({ journal }: { journal: Journal }) {
   );
 }
 
-/** Qué pasó, en plata, con lo que vendiste: una frase y los dos totales. */
-export function SoldSummary({ journal }: { journal: Journal }) {
-  const s = journal.sold;
-  const c = journal.currency;
-  if (s.count === 0) return null;
-  return (
-    <section className="flex flex-col gap-4 rounded-xl bg-panel p-5">
-      <h2 className="font-medium">Qué pasó con lo que vendiste</h2>
-      <p className="text-lg">
-        {s.net >= 0 ? 'En conjunto, vender te convino: hoy tendrías ' : 'En conjunto, vender no te convino: hoy tendrías '}
-        <span className={`tabular font-semibold ${tone(s.net)}`}>{money(Math.abs(s.net), c)}</span> {s.net >= 0 ? 'menos' : 'más'} si te hubieras
-        quedado con todo.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg bg-card px-4 py-3">
-          <p className="text-xs text-muted">Después de vender, el precio subió</p>
-          <p className="tabular mt-1 text-xl font-semibold text-down">{money(s.missed, c)}</p>
-          <p className="text-xs text-muted">que dejaste de ganar en {s.missedCount} {s.missedCount === 1 ? "venta" : "ventas"}</p>
-        </div>
-        <div className="rounded-lg bg-card px-4 py-3">
-          <p className="text-xs text-muted">Después de vender, el precio bajó</p>
-          <p className="tabular mt-1 text-xl font-semibold text-up">{money(s.saved, c)}</p>
-          <p className="text-xs text-muted">que te ahorraste de perder en {s.savedCount} {s.savedCount === 1 ? "venta" : "ventas"}</p>
-        </div>
-      </div>
-      <p className="text-xs text-muted">
-        Compara el precio al que vendiste con el de hoy, en dólares{c === 'ARS' ? ' y pasado a pesos de hoy' : ''}: así la inflación no hace que toda
-        venta parezca plata perdida. No cuenta lo que hiciste después con esa plata.
-      </p>
-    </section>
-  );
-}
-
 /**
  * Frases que comparan dos grupos de decisiones. Una diferencia solo se afirma si es real (el servidor
  * hace la prueba estadística): si puede ser casualidad, se dice eso, en vez de presentarla como un hecho.

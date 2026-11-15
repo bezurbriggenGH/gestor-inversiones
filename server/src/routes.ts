@@ -317,17 +317,45 @@ function readNote(b: Record<string, unknown>) {
   return { note_title: cleanText(b.note_title, 120), note_body: cleanText(b.note_body, 5000), note_link: link };
 }
 
+/**
+ * Un número como lo escribe una persona: "1500" o "1500.25". Number() también acepta "1e3" (mil) o "0x10"
+ * (dieciséis), que nadie quiso cargar: esos dan NaN y se rechazan como cualquier dato inválido.
+ */
+export function plainNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  return typeof v === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : NaN;
+}
+
+// Un precio más de 10 veces más alto o más bajo que el cierre de ese día es un cero de más o de menos:
+// ni en un día de pánico una acción opera a la décima parte de su cierre
+const MAX_PRICE_JUMP = 10;
+
+/**
+ * ¿El precio de una compra o venta es absurdo comparado con el cierre de ese día? Se compara en la escala
+ * de esa fecha (el cierre guardado ya está ajustado por los splits posteriores; ver splitFactorAfter).
+ * Ejemplo: EDN cotiza a $1.186 y se carga una compra a $1.186.000 → se rechaza.
+ */
+export function priceProblem(ticker: string, type: OpType, date: string, price: number): string | null {
+  if (type === 'DIVIDENDO') return null;
+  const row = get<{ close: number }>('SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1', ticker, date);
+  if (!row) return null;
+  const close = row.close * splitFactorAfter(ticker, date);
+  if (price <= close * MAX_PRICE_JUMP && price >= close / MAX_PRICE_JUMP) return null;
+  const fmt = (v: number) => `$${v.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+  return `El precio (${fmt(price)}) está a más de 10 veces del cierre de ese día (${fmt(close)}): revisá que no sobre o falte un cero`;
+}
+
 /** Fecha, cantidad, precio y comisiones de una operación, controlados igual al cargarla y al editarla. */
-function readAmounts(type: OpType, b: Record<string, unknown>) {
+function readAmounts(type: OpType, b: Record<string, unknown>, ticker: string) {
   const date = String(b.date ?? '');
   if (!isRealDate(date)) throw new HttpError(400, 'Fecha inválida');
   if (date > arDate()) throw new HttpError(400, 'La fecha no puede ser futura');
   const tooOld = tooOldProblem(date);
   if (tooOld) throw new HttpError(400, tooOld);
-  const quantity = Number(b.quantity);
-  const price = Number(b.price);
-  const fees = b.fees === '' || b.fees == null ? 0 : Number(b.fees);
-  const problem = amountsProblem(type, quantity, price, fees);
+  const quantity = plainNumber(b.quantity);
+  const price = plainNumber(b.price);
+  const fees = b.fees === '' || b.fees == null ? 0 : plainNumber(b.fees);
+  const problem = amountsProblem(type, quantity, price, fees) ?? priceProblem(ticker, type, date, price);
   if (problem) throw new HttpError(400, problem);
   return { date, quantity, price, fees };
 }
@@ -358,7 +386,7 @@ router.post('/assets/:ticker/operations', (req, res) => {
 
   const type = b.type as OpType;
   if (!OP_TYPES.includes(type)) throw new HttpError(400, 'El tipo debe ser COMPRA, VENTA o DIVIDENDO');
-  const { date, quantity, price, fees } = readAmounts(type, b);
+  const { date, quantity, price, fees } = readAmounts(type, b, ticker);
 
   const draft = { user_id: uid, ticker, type, date, quantity, price, fees, ...readNote(b) };
   // Se recalcula todo junto: una compra nueva puede cambiar las fracciones que deja un split
@@ -418,7 +446,7 @@ router.put('/operations/:id', (req, res) => {
   const id = Number(req.params.id);
   const op = get<OperationRow>('SELECT * FROM operations WHERE id = ? AND user_id = ?', id, uid);
   if (!op) throw new HttpError(404, 'Operación no encontrada');
-  const { date, quantity, price, fees } = readAmounts(op.type, req.body ?? {});
+  const { date, quantity, price, fees } = readAmounts(op.type, req.body ?? {}, op.ticker);
 
   const raw = getRawOperations(uid, op.ticker);
   const before = adjustOperations(raw);
@@ -621,7 +649,7 @@ router.post('/import', async (req, res) => {
     if (tooOld) r.errors.push(tooOld.charAt(0).toLowerCase() + tooOld.slice(1));
     // Las mismas reglas que al cargar a mano (después de pasar a pesos los dividendos en dólares)
     if (!r.ignored && !r.errors.length && r.type && r.quantity != null && r.price != null) {
-      const problem = amountsProblem(r.type, r.quantity, r.price, r.fees);
+      const problem = amountsProblem(r.type, r.quantity, r.price, r.fees) ?? (r.ticker && r.date ? priceProblem(r.ticker, r.type, r.date, r.price) : null);
       if (problem) r.errors.push(problem.charAt(0).toLowerCase() + problem.slice(1));
     }
   }

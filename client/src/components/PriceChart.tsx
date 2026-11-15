@@ -178,7 +178,7 @@ function OperationCard({ op, currency }: { op: Operation; currency: Currency }) 
       {missed != null && Math.abs(missed) >= 0.005 && (
         <p className="tabular text-xs">
           Al precio de hoy, {missed > 0 ? 'dejaste de ganar' : 'te ahorraste de perder'}{' '}
-          <span className={missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(missed), currency)}</span>.
+          <span className={missed > 0 ? 'text-down' : 'text-up'}>{money(Math.abs(missed), currency)}</span> (sin contar si después volviste a comprar).
         </p>
       )}
     </div>

@@ -1,6 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from './api';
+import { api, type Currency } from './api';
 import { useSettings } from './settings';
+
+/**
+ * Mientras llega la respuesta nueva, se siguen mostrando los datos anteriores (así la pantalla no parpadea),
+ * pero solo si están en la misma moneda y con el mismo dólar. Al pasar de pesos a dólares, mostrar los
+ * datos viejos con el formato nuevo decía "US$ 8.957.022" por un instante: los pesos con el signo del dólar.
+ */
+export function sameView(currency: Currency, fxKind: string) {
+  return <T,>(prev: T | undefined, prevQuery?: { queryKey: readonly unknown[] }) =>
+    prevQuery && prevQuery.queryKey.includes(currency) && prevQuery.queryKey.includes(fxKind) ? prev : undefined;
+}
 
 export function usePortfolio() {
   const { currency, fxKind } = useSettings();
@@ -9,7 +19,7 @@ export function usePortfolio() {
     queryFn: () => api.portfolio(currency, fxKind),
     // Si el servidor no llegó a traer los precios nuevos, se vuelve a preguntar a los pocos segundos
     refetchInterval: (query) => (query.state.data?.updating ? 3_000 : 5 * 60_000),
-    placeholderData: (prev) => prev,
+    placeholderData: sameView(currency, fxKind),
   });
 }
 
@@ -18,7 +28,7 @@ export function useHistory() {
   return useQuery({
     queryKey: ['history', currency, fxKind],
     queryFn: () => api.history(currency, fxKind),
-    placeholderData: (prev) => prev,
+    placeholderData: sameView(currency, fxKind),
   });
 }
 
@@ -27,7 +37,7 @@ export function useJournal() {
   return useQuery({
     queryKey: ['journal', currency, fxKind],
     queryFn: () => api.journal(currency, fxKind),
-    placeholderData: (prev) => prev,
+    placeholderData: sameView(currency, fxKind),
   });
 }
 
@@ -36,13 +46,13 @@ export function useHold(since: string) {
   return useQuery({
     queryKey: ['hold', since, currency, fxKind],
     queryFn: () => api.hold(since, currency, fxKind),
-    placeholderData: (prev) => prev,
+    placeholderData: sameView(currency, fxKind),
   });
 }
 
 export function useCosts() {
   const { currency, fxKind } = useSettings();
-  return useQuery({ queryKey: ['costs', currency, fxKind], queryFn: () => api.costs(currency, fxKind), placeholderData: (prev) => prev });
+  return useQuery({ queryKey: ['costs', currency, fxKind], queryFn: () => api.costs(currency, fxKind), placeholderData: sameView(currency, fxKind) });
 }
 
 export function useAsset(ticker: string) {
@@ -50,7 +60,7 @@ export function useAsset(ticker: string) {
   return useQuery({
     queryKey: ['asset', ticker, currency, fxKind],
     queryFn: () => api.asset(ticker, currency, fxKind),
-    placeholderData: (prev) => (prev?.asset.ticker === ticker ? prev : undefined),
+    placeholderData: (prev, prevQuery) => (prev?.asset.ticker === ticker ? sameView(currency, fxKind)(prev, prevQuery) : undefined),
   });
 }
 

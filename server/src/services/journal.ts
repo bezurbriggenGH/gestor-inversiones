@@ -275,19 +275,9 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     return robustDifference(judged(a), judged(b));
   };
 
-  // Qué pasó, en plata, con todo lo que vendiste (sin la parte que recompraste el mismo día)
-  const sales = entries.filter((e) => e.missed != null && !fullyOffset(e)).map((e) => ({ ...e, missed: e.missed! * (1 - e.offset) }));
-  const sold = {
-    count: sales.length,
-    // Ventas después de las cuales el precio siguió subiendo: lo que dejaste de ganar
-    missedCount: sales.filter((e) => e.missed! > 0).length,
-    missed: sales.reduce((acc, e) => acc + Math.max(e.missed!, 0), 0),
-    // Ventas después de las cuales el precio bajó: lo que te ahorraste de perder
-    savedCount: sales.filter((e) => e.missed! < 0).length,
-    saved: sales.reduce((acc, e) => acc + Math.max(-e.missed!, 0), 0),
-    // Positivo: en conjunto, vender te convino
-    net: sales.reduce((acc, e) => acc - e.missed!, 0),
-  };
+  // Antes se sumaba acá "en conjunto, vender te convino": comparaba cada venta contra el precio de hoy aunque
+  // la hubieras recomprado a los pocos días, y con tus datos daba la conclusión al revés. Lo que mide eso
+  // bien es "¿Y si no hubieras tocado nada?" (review.ts). Cada venta sigue mostrando lo suyo en la lista.
 
   // Ventas con ganancia: el "porcentaje de aciertos" clásico, en plata y no en momento.
   // Las ventas del mismo activo en el mismo día cuentan como una sola (el broker suele partir una orden en varias).
@@ -295,7 +285,7 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
   // dé ganancia. Ejemplo: compro a $1.000 con el dólar a $1.000 (US$ 1) y vendo a $1.200 con el
   // dólar a $1.300 (US$ 0,92): en pesos gané $200, en dólares perdí US$ 0,08 → cuenta como pérdida.
   const byDay = new Map<string, number>();
-  for (const e of entries) {
+  for (const e of entries.filter((x) => !fullyOffset(x))) {
     const result = realizedJudgeByOp.get(e.id);
     if (e.type === 'VENTA' && result != null) byDay.set(`${e.ticker}|${e.date}`, (byDay.get(`${e.ticker}|${e.date}`) ?? 0) + result);
   }
@@ -345,7 +335,6 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
     currency,
     entries,
     vsMarket,
-    sold,
     closed,
     stats: groups,
     // ¿La diferencia entre dos grupos es real (y no de un solo activo), o puede ser casualidad?

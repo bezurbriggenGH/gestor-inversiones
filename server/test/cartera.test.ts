@@ -204,6 +204,18 @@ describe('Ganancias', () => {
     assert.ok(near(p.totalGainPct, 0.95)); // 950 sobre los $1.000 que llegó a poner
   });
 
+  test('lo que llegaste a poner se mira al cierre del día: vender y comprar el mismo día no suma plata', () => {
+    // Tengo puestos $1.000. Un día vendo todo por $1.200 y con eso compro otra cosa por $1.150.
+    // Al cierre del día tengo puestos $1.000 − $1.200 + $1.150 = $950: el máximo sigue siendo $1.000.
+    // Antes se sumaba primero la compra: $1.000 + $1.150 = $2.150, un pico que nunca existió.
+    const ops = [
+      op('COMPRA', '2024-01-01', 10, 100),
+      op('VENTA', '2024-05-02', 10, 120),
+      { ...op('COMPRA', '2024-05-02', 10, 115), ticker: 'OTRO' },
+    ];
+    assert.equal(peakCapital(ops, pesos), 1000);
+  });
+
   test('acertijo de Martín: Laura, que no hizo nada, gana 800 (150 menos)', () => {
     const p = position([op('COMPRA', '2024-01-01', 10, 100), op('VENTA', '2024-04-01', 10, 180)]);
     assert.equal(p.totalGain, 800);

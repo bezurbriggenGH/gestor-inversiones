@@ -408,3 +408,24 @@ describe('Un dividendo con un cero de más', () => {
     assert.match(r.body.rows[0].errors.join(), /más de la mitad/);
   });
 });
+
+describe('Números raros y precios con un cero de más', () => {
+  test('cantidad o precio escritos como "1e3" o "0x10" no se aceptan (sí "10" y "100.5")', async () => {
+    for (const quantity of ['1e3', '0x10', '1,5']) assert.equal((await add({ quantity })).status, 400, quantity);
+    assert.equal((await add({ price: '1e2' })).status, 400);
+    assert.equal((await add({ quantity: '10', price: '100.5' })).status, 201);
+  });
+
+  test('un precio a más de 10 veces del cierre de ese día se rechaza: AAA cerró a $100 el 02/01/2025', async () => {
+    const r = await add({ price: 100_000 });
+    assert.equal(r.status, 400);
+    assert.match(r.error!, /más de 10 veces del cierre/);
+    assert.equal((await add({ price: 9 })).status, 400); // un cero de menos
+    assert.equal((await add({ price: 150 })).status, 201); // lejos, pero posible
+  });
+
+  test('importado, también', async () => {
+    const r = await call('POST', '/import', { csv: 'Fecha;Tipo;Ticker;Cantidad;Precio;Comision\n02/01/2025;Compra;AAA;1;100000;0', commit: false });
+    assert.match(r.body.rows[0].errors.join(), /más de 10 veces del cierre/);
+  });
+});

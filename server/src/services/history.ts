@@ -188,6 +188,9 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   // Qué activos se valuaron así y entre qué fechas. La pantalla lo avisa: cuando aparece el primer precio
   // real, toda la suba o baja de esos días cae de golpe en ese único día (y en ese mes del calendario).
   const unpriced = new Map<string, { ticker: string; from: string; until: string | null }>();
+  // Solo importa si el día del primer precio todavía lo tenías: si lo vendiste antes, la ganancia cae el
+  // día de la venta, que es cuando se hizo de verdad (no hay salto que avisar)
+  const landed = new Set<string>();
   const valueOn = (date: string) => {
     let value = 0;
     for (const [t, qty] of holdings) {
@@ -217,6 +220,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       }
       opIdx++;
     }
+    for (const u of unpriced.values()) if (u.until === date && (holdings.get(u.ticker) ?? 0) > 1e-9) landed.add(u.ticker);
 
     const valueArs = valueOn(date);
     lastValueArs = valueArs;
@@ -288,7 +292,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     // En pesos, cada mes también descontada la inflación de ese mes (en dólares no hace falta)
     monthly: monthlyReturns(points, currency === 'ARS' && !inflIdx.empty ? inflIdx : undefined),
     // Activos que hubo que valuar a su último precio de compra o venta porque no había precios guardados
-    unpriced: [...unpriced.values()],
+    unpriced: [...unpriced.values()].filter((u) => landed.has(u.ticker)),
   };
 }
 

@@ -246,8 +246,17 @@ describe('Activo sin precios guardados de la época de la operación', () => {
     assert.ok(near(mar.return, 30_712.5 / 392_850));
   });
 
-  test('se informa qué activo se valuó sin precios y desde cuándo hay precios, para avisarlo en pantalla', () => {
-    assert.deepEqual(buildHistory(2, 'ARS', 'bolsa').unpriced, [{ ticker: 'NUE', from: '2025-02-03', until: '2025-04-01' }]);
+  test('si lo vendiste antes del primer precio, no hay salto que avisar: la ganancia cae el día de la venta', () => {
+    assert.deepEqual(buildHistory(2, 'ARS', 'bolsa').unpriced, []);
+  });
+
+  test('si todavía lo tenías cuando aparece el primer precio, se avisa: ahí cae de golpe la suba o baja', () => {
+    // Otro activo sin historial que sigo teniendo: comprado el 03/02 y con el primer precio el 01/04
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SIG', 'SIG.BA', 'Sin historial', 'CEDEAR')");
+    run("INSERT INTO user_assets (user_id, ticker) VALUES (2, 'SIG')");
+    run("INSERT INTO prices (ticker, date, close) VALUES ('SIG', '2025-04-01', 50)");
+    run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'SIG', 'COMPRA', '2025-02-03', 10, 80)");
+    assert.deepEqual(buildHistory(2, 'ARS', 'bolsa').unpriced, [{ ticker: 'SIG', from: '2025-02-03', until: '2025-04-01' }]);
   });
 });
 
