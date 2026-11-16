@@ -167,3 +167,23 @@ describe('El dividendo que sugiere la app, antes de un split', () => {
     assert.equal(r.status, 201, r.error ?? '');
   });
 });
+
+describe('El dividendo que sugiere la app, el mismo día de un reparto de acciones', () => {
+  test('37 acciones con un reparto de ×1,02: quedan 37 enteras (la fracción se cobra aparte) y el dividendo es por 37, no por 37,74', async () => {
+    run("INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES ('FRA', 'FRA.BA', 'Prueba', 'ACCION', ?)", Date.now());
+    run("INSERT INTO prices (ticker, date, close) VALUES ('FRA', '2025-01-02', 100)");
+    run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'FRA')");
+    run("INSERT INTO sync_state (key, value) VALUES ('splits:FRA', ?)", Date.now());
+    await add('FRA', { date: '2025-01-02', quantity: 37, price: 102 });
+    // El 03/03/2025 reparte 2% en acciones (37 × 1,02 = 37,74) y ese mismo día paga $5 por acción
+    run("INSERT INTO split_events (ticker, date, factor) VALUES ('FRA', '2025-03-03', 1.02)");
+    run("INSERT INTO prices (ticker, date, close) VALUES ('FRA', '2025-03-03', 100)");
+    run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('FRA', '2025-03-03', 5)");
+    const asset = await call('GET', '/assets/FRA?currency=ARS&fx=bolsa');
+    const d = asset.body.pendingDividends[0];
+    assert.equal(d.quantity, 37);
+    assert.equal(d.gross, 185); // 37 × $5
+    const r = await call('POST', '/assets/FRA/operations', { type: 'DIVIDENDO', date: d.date, quantity: d.quantity, price: d.amountPerShare, fees: 0 });
+    assert.equal(r.status, 201, r.error ?? '');
+  });
+});

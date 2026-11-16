@@ -83,7 +83,9 @@ Mientras la app está prendida, se consultan las fuentes de datos solo cuando el
 cambiado: con BYMA abierto (lunes a viernes de 11 a 17, hora argentina) como mucho cada 15
 minutos, y una vez después del cierre para guardar el precio final. De noche y los fines de semana
 no se consulta nada. Si la app estuvo apagada varios días, al prenderla se completan los días que
-falten.
+falten. La excepción son unos pocos CEDEARs de los que Yahoo solo publica el precio del día, sin historial
+(por ejemplo SDA o XP): de esos queda guardado solo el precio de los días en que la app estuvo prendida
+después del cierre, y la app lo avisa ("sin dato", "no hay precios de antes").
 
 ## Tests
 
@@ -101,13 +103,13 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 |---|---|
 | `server/test/cartera.test.ts` | Precio promedio, ganancias, comisiones, dividendos, dólares, ventas de más, variación del día con feriados largos |
 | `server/test/historia.test.ts` | TIR (y que no se anualice con menos de un año), rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
-| `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención y, en dólares, con el dólar de su día; el simulador no acepta fechas anteriores a las cotizaciones del dólar guardadas |
+| `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención y, en dólares, con el dólar de su día; ni el simulador ni el gráfico en dólares usan fechas anteriores a las cotizaciones del dólar guardadas |
 | `server/test/inflacion.test.ts` | Índice de inflación armado con el IPC: meses encadenados, reparto por día y meses sin publicar |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, splits informados sin ajustar, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta, que el Diario de decisiones juzgue en dólares, la comparación contra el mercado, órdenes partidas y cuándo una diferencia puede ser casualidad |
 | `server/test/balance.test.ts` | ¿Y si no hubieras tocado nada? (con la inflación), comisiones (también descontada la inflación), qué pasó con lo que vendiste y patrones del Diario |
 | `server/test/sincronizar.test.ts` | Pedidos a Yahoo: de a pocos, sin insistir después de un error, reintentar si faltó el precio de la última rueda, y que la portada no los espere más de la cuenta |
-| `server/test/editar.test.ts` | Corregir una operación: mismos controles que al cargarla, ventas y dividendos que quedarían sin respaldo, splits, operaciones ajenas, y precio y dividendo sugeridos en la escala de su fecha |
+| `server/test/editar.test.ts` | Corregir una operación: mismos controles que al cargarla, ventas y dividendos que quedarían sin respaldo, splits, operaciones ajenas, y precio y dividendo sugeridos en la escala de su fecha (y por acciones enteras si ese día hubo un reparto de acciones) |
 | `server/test/importador.test.ts` | Números ("1.234,56", "0.125") y fechas de los archivos de los brokers |
 | `server/test/fotos.test.ts` | Fotos de las operaciones: solo imágenes, cada una de su dueño, y que se borren bien |
 | `server/test/validaciones.test.ts` | Casos límite cargados desde la app o importados: cantidades negativas o con decimales, ventas de más, fechas imposibles o anteriores a los datos, dividendos imposibles, borrar activos |
@@ -141,7 +143,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | Tasa de plazo fijo | ArgentinaDatos |
 
 Todas son públicas y no requieren clave. La app guarda todo en su base de datos y cada
-actualización pide **solo los días que faltan**, así que aunque no se abra por semanas no se pierde nada.
+actualización pide **solo los días que faltan**, así que aunque no se abra por semanas no se pierde nada (salvo en los activos sin historial en Yahoo; ver "Cuándo se actualizan los precios").
 
 ## Estructura
 

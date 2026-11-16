@@ -36,7 +36,7 @@ function StatCard({ label, stats, sub }: { label: string; stats: JournalStats; s
 type Filter = 'TODAS' | Verdict | 'PENDIENTE';
 
 export function JournalPage() {
-  const { currency } = useSettings();
+  const { currency, fxKind } = useSettings();
   const { data, isLoading, error } = useJournal();
   const [filter, setFilter] = useState<Filter>('TODAS');
   // Se muestran de a PAGE decisiones: con cientos de operaciones, la lista entera mide decenas de pantallas
@@ -59,6 +59,10 @@ export function JournalPage() {
           Qué hizo el precio 30, 90 y 180 días después de cada compra y venta, medido en dólares (así la inflación no hace que toda compra
           parezca un acierto). Mira el <span className="text-text">momento</span> de cada decisión, no si ganaste plata: eso está más abajo,
           en "Lo que pasó con tus ventas, en plata".
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Se usa el dólar {fxKind === 'contadoconliqui' ? 'CCL' : 'MEP'}, el que tenés elegido en el menú (también si estás viendo en pesos). Con
+          el otro dólar algunos aciertos cambian, porque no se mueven igual; "Contra el mercado" da lo mismo con los dos.
         </p>
       </div>
 

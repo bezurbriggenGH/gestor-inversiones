@@ -558,8 +558,12 @@ export function unregisteredDividends<T extends { date: string }>(events: T[], r
 function pendingDividends(userId: number, asset: AssetRow) {
   const ops = getOperations(userId, asset.ticker);
   const registered = ops.filter((o) => o.type === 'DIVIDENDO').map((o) => o.date);
+  // Si ese mismo día hubo un reparto de acciones, la fracción que dejó ya se cobró en efectivo y no cobra
+  // dividendo: se descuenta. Sin esto se sugería un dividendo por 37,82 acciones (37 × 1,022), y al guardarlo
+  // la app lo rechazaba: la cantidad tiene que ser entera.
+  const fractionOn = (date: string) => ops.filter((o) => o.auto && o.date === date).reduce((acc, o) => acc + o.quantity, 0);
   const events = dividendEvents(asset.ticker, asset.type)
-    .map((e) => ({ ...e, quantity: holdingBefore(ops, e.date) }))
+    .map((e) => ({ ...e, quantity: holdingBefore(ops, e.date) - fractionOn(e.date) }))
     .filter((e) => e.quantity > 0);
   const rate = DEFAULT_WITHHOLDING[asset.type];
   return unregisteredDividends(events, registered)
@@ -568,7 +572,9 @@ function pendingDividends(userId: number, asset: AssetRow) {
       // Se sugiere en la escala de esa fecha, como lo cargarías a mano (y como lo informó el broker): al
       // guardarlo, la app lo ajusta por los splits posteriores. En la escala de hoy quedaría ajustado dos veces.
       const f = splitFactorAfter(asset.ticker, e.date);
-      return { date: e.date, amountPerShare: e.amount * f, quantity: e.quantity / f, gross, withholding: gross * rate, withholdingRate: rate };
+      // La cantidad en la escala de esa fecha es entera; la división puede dejar 36,99999999
+      const quantity = Math.abs(e.quantity / f - Math.round(e.quantity / f)) < 1e-6 ? Math.round(e.quantity / f) : e.quantity / f;
+      return { date: e.date, amountPerShare: e.amount * f, quantity, gross, withholding: gross * rate, withholdingRate: rate };
     });
 }
 
@@ -662,8 +668,12 @@ export function buildAssetDetail(userId: number, ticker: string, currency: Curre
   const conv = makeConverter(currency, fx);
   const { position, realizedByOp } = positionFor(userId, ticker, conv);
 
-  const series = all<PriceRow>('SELECT date, open, high, low, close, volume FROM prices WHERE ticker = ? ORDER BY date', ticker).map(
-    (p) => {
+  // En dólares, solo desde que hay cotización de ese dólar: antes se usaría la primera que hay, de años
+  // después. GGAL del 10/01/2017 ($48,80) figuraba a US$ 1,32 con el MEP de octubre de 2018 ($36,97), cuando
+  // con el dólar de ese día ($16) valía US$ 3,05: el gráfico mostraba una suba donde hubo una caída.
+  const series = all<PriceRow>('SELECT date, open, high, low, close, volume FROM prices WHERE ticker = ? ORDER BY date', ticker)
+    .filter((p) => currency === 'ARS' || fx.covers(p.date))
+    .map((p) => {
       // Si Yahoo no trae apertura/máximo/mínimo, la vela se dibuja plana en el cierre
       const c = conv(p.close, p.date);
       const o = p.open ? conv(p.open, p.date) : c;
@@ -675,8 +685,7 @@ export function buildAssetDetail(userId: number, ticker: string, currency: Curre
         close: c,
         volume: p.volume,
       };
-    },
-  );
+    });
 
   const operations = sortOps(getOperations(userId, ticker))
     .reverse()

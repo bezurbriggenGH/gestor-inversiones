@@ -213,7 +213,7 @@ export function ReportPage() {
             `En ${j.vsMarket.beat} de ${j.vsMarket.compared} decisiones elegiste mejor que el S&P 500 (CEDEARs) o el Merval (acciones) a 90 días` +
               (j.vsMarket.even > 0 ? ` (otras ${j.vsMarket.even} quedaron a menos de 2%: empates). ` : '. ')}
           {j.stats.all.hits} aciertos de {j.stats.all.judged} decisiones evaluadas ({j.stats.all.total} en total; una orden que el broker partió en
-          varias cuenta como una). Una compra es acierto si a los 90 días el precio subió en dólares; una venta, si bajó. Mide el momento de cada
+          varias cuenta como una). Una compra es acierto si a los 90 días el precio subió más de 2% en dólares; una venta, si bajó más de 2% (entre medio es neutral y no cuenta). Mide el momento de cada
           decisión, no si se ganó plata.
         </p>
         {j.closed.count > 0 && (

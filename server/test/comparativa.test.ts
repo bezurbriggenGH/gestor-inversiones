@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { buildHistory } from '../src/services/history.ts';
 import { simulate } from '../src/services/simulator.ts';
+import { buildAssetDetail } from '../src/services/portfolio.ts';
 
 // Precios y dólar planos, e inflación en cero (IPC de 0% desde diciembre de 2024): las cuentas se sacan a mano
 run("INSERT INTO index_values (series, date, value) VALUES ('ipc', '2024-12-31', 0)");
@@ -71,6 +72,17 @@ describe('Simulador: una fecha anterior a las cotizaciones del dólar', () => {
   test('desde el primer día con cotización sí se simula: $1.000 a $1.000 por dólar = US$ 1', () => {
     const sim = simulate('VIE', 1000, '2025-01-02', 'USD', 'bolsa');
     assert.equal(sim.invested, 1);
+  });
+});
+
+describe('Gráfico de un activo en dólares: solo desde que hay cotización del dólar', () => {
+  // VIE tiene precios desde el 03/06/2024 y el dólar guardado empieza el 02/01/2025
+  test('en pesos está todo el historial; en dólares arranca el 02/01/2025 ($100 a $1.000 por dólar = US$ 0,10)', () => {
+    run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'VIE')");
+    assert.equal(buildAssetDetail(1, 'VIE', 'ARS', 'bolsa').series[0].date, '2024-06-03');
+    const usd = buildAssetDetail(1, 'VIE', 'USD', 'bolsa').series;
+    assert.equal(usd[0].date, '2025-01-02');
+    assert.equal(usd[0].close, 0.1);
   });
 });
 

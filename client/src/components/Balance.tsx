@@ -144,6 +144,8 @@ export function CostsResult({ data }: { data: Costs }) {
           )}{' '}
           <span className="text-xs text-muted">
             Cada comisión se pasa a pesos de hoy con el IPC y se compara contra lo que le ganaste a la inflación (lo que muestra la portada).
+            Este porcentaje es alto cuando le ganaste por poco a la inflación, aunque las comisiones sean bajas: mirá también el "% del
+            monto" de la tabla.
           </span>
         </p>
       )}
