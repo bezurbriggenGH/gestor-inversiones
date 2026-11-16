@@ -37,6 +37,15 @@ export function simulate(ticker: string, amount: number, date: string, currency:
 
   const fx = loadFx(kind);
   if (fx.empty) throw new HttpError(503, 'Todavía no hay cotizaciones del dólar');
+  // Antes de la primera cotización guardada no se sabe cuánto valía el dólar: se usaba la primera que hay,
+  // de años después. $1.000.000 del 10/01/2017 se pasaban con el MEP del 29/10/2018 ($36,97 → US$ 27.049)
+  // cuando ese día el dólar valía $16 (US$ 62.500), y el activo parecía ganar 198% en dólares en vez de 23%.
+  // Es el mismo límite que tienen las operaciones (tooOldProblem en routes.ts).
+  if (!fx.covers(start.date)) {
+    const first = fx.dates[0].split('-').reverse().join('/');
+    const name = kind === 'contadoconliqui' ? 'CCL' : 'MEP';
+    throw new HttpError(400, `La app tiene cotizaciones del dólar ${name} desde el ${first}: elegí una fecha posterior (antes no se puede comparar contra el dólar).`);
+  }
   const inflation = inflationSeries();
   const pf = plazoFijoIndex(start.date, arDate());
 

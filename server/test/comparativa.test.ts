@@ -57,6 +57,23 @@ describe('Simulador: dividendos netos de la retención', () => {
   });
 });
 
+describe('Simulador: una fecha anterior a las cotizaciones del dólar', () => {
+  // El dólar guardado empieza el 02/01/2025 ($1.000). VIE tiene precios desde el 03/06/2024.
+  // Antes, $1.000 del 03/06/2024 se pasaban con el dólar de 2025, que no es el de ese día.
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('VIE', 'VIE.BA', 'Vieja', 'ACCION')");
+  for (const date of ['2024-06-03', '2025-01-02', '2025-07-01']) run("INSERT INTO prices (ticker, date, close) VALUES ('VIE', ?, 100)", date);
+
+  test('se rechaza y dice desde cuándo hay cotizaciones, en dólares y también en pesos (la alternativa "dólar" usa el mismo dato)', () => {
+    assert.throws(() => simulate('VIE', 1000, '2024-06-03', 'USD', 'bolsa'), /dólar MEP desde el 02\/01\/2025/);
+    assert.throws(() => simulate('VIE', 1000, '2024-06-03', 'ARS', 'bolsa'), /dólar MEP desde el 02\/01\/2025/);
+  });
+
+  test('desde el primer día con cotización sí se simula: $1.000 a $1.000 por dólar = US$ 1', () => {
+    const sim = simulate('VIE', 1000, '2025-01-02', 'USD', 'bolsa');
+    assert.equal(sim.invested, 1);
+  });
+});
+
 describe('Simulador en dólares: cada dividendo con el dólar del día en que se cobró', () => {
   // $1.000 → 10 acciones a $100. El 02/03/2026 cobra $93 netos con el dólar a $1.000 (US$ 0,093).
   // Después el dólar pasa a $2.000. Antes los $93 se pasaban con el dólar del final: US$ 0,0465.

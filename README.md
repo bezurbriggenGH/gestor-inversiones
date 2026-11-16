@@ -101,7 +101,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 |---|---|
 | `server/test/cartera.test.ts` | Precio promedio, ganancias, comisiones, dividendos, dólares, ventas de más, variación del día con feriados largos |
 | `server/test/historia.test.ts` | TIR (y que no se anualice con menos de un año), rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
-| `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención y, en dólares, con el dólar de su día |
+| `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención y, en dólares, con el dólar de su día; el simulador no acepta fechas anteriores a las cotizaciones del dólar guardadas |
 | `server/test/inflacion.test.ts` | Índice de inflación armado con el IPC: meses encadenados, reparto por día y meses sin publicar |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta, que el Diario de decisiones juzgue en dólares, la comparación contra el mercado, órdenes partidas y cuándo una diferencia puede ser casualidad |
