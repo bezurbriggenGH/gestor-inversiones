@@ -174,6 +174,10 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     merval: loadIndex('merval'),
     spy: loadIndex('spy'),
   };
+  // Un índice cuyos datos empiezan después de tu primera operación no se puede comparar: para las compras
+  // anteriores se usaría su primer valor, de años después. El S&P 500 (CEDEAR SPY) tiene datos desde el
+  // 18/01/2022 ($1.618): una compra del 13/03/2019, cuando valía unos $194, "compraba" 8 veces menos.
+  const lateStart = (k: BenchmarkKey) => !indices[k].empty && !indices[k].covers(start);
 
   // Recorrido día a día
   const holdings = new Map<string, number>();
@@ -203,7 +207,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       if (op.type === 'VENTA') holdings.set(op.ticker, (holdings.get(op.ticker) ?? 0) - op.quantity);
       netInvested += toCur(flow.amount, flow.date);
       for (const [k, idx] of Object.entries(indices)) {
-        if (!idx.empty) units[k] += flow.amount / idx.at(flow.date);
+        if (!idx.empty && !lateStart(k as BenchmarkKey)) units[k] += flow.amount / idx.at(flow.date);
       }
       opIdx++;
     }
@@ -213,7 +217,7 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
 
     const bench: Record<string, number | null> = {};
     for (const [k, idx] of Object.entries(indices)) {
-      bench[k] = idx.empty ? null : toCur(units[k] * idx.at(date), date);
+      bench[k] = idx.empty || lateStart(k as BenchmarkKey) ? null : toCur(units[k] * idx.at(date), date);
     }
     points.push({ date, value: toCur(valueArs, date), netInvested, benchmarks: bench });
   }
@@ -248,6 +252,8 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       irr: value != null ? irrWithFinal(value) : null,
       lastDataDate: lastData,
       frozen,
+      // Si el índice empieza después de tu primera operación: desde cuándo tiene datos (si no, null)
+      startsAfter: lateStart(k) ? indices[k].dates[0] : null,
     };
   });
 

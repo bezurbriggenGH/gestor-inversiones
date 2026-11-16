@@ -153,9 +153,11 @@ export function BenchmarkPage() {
                   </>
                 ) : (
                   <td colSpan={3} className="px-5 py-3 text-right text-muted">
-                    {b.frozen && b.lastDataDate
-                      ? `Yahoo no lo publica desde el ${date(b.lastDataDate)}: vuelve solo cuando haya datos nuevos`
-                      : 'Sin datos todavía'}
+                    {b.startsAfter
+                      ? `Hay datos recién desde el ${date(b.startsAfter)}, después de tu primera operación (${date(data.points[0].date)}): no se puede comparar desde el principio`
+                      : b.frozen && b.lastDataDate
+                        ? `Yahoo no lo publica desde el ${date(b.lastDataDate)}: vuelve solo cuando haya datos nuevos`
+                        : 'Sin datos todavía'}
                   </td>
                 )}
               </tr>

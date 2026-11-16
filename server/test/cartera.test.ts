@@ -177,6 +177,26 @@ describe('Ganancias', () => {
     assert.equal(previousSession('2024-03-27'), '2024-03-26');
   });
 
+  test('un día sin rueda no es la rueda anterior aunque Yahoo publique filas con volumen 0 (09 y 10/11/2026)', () => {
+    // FAN tiene una fila del 10/11 con el cierre del 06/11 y volumen 0; SPX no tiene fila ese día.
+    // Los dos operaron el 06/11 y el 11/11: SPX pasó de $20.520 a $21.160 → 10 × $640 = $6.400.
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('FAN', 'FAN.BA', 'Prueba', 'ACCION'), ('SPX', 'SPX.BA', 'Prueba', 'CEDEAR')");
+    run(
+      `INSERT INTO prices (ticker, date, close, volume) VALUES ('FAN', '2026-11-06', 100, 500), ('FAN', '2026-11-10', 100, 0),
+       ('FAN', '2026-11-11', 105, 800), ('SPX', '2026-11-06', 20520, 300), ('SPX', '2026-11-11', 21160, 400)`,
+    );
+    assert.equal(previousSession('2026-11-11'), '2026-11-06'); // antes: el 10/11
+    const p = computePosition(
+      [op('COMPRA', '2026-06-02', 10, 20000)],
+      close('2026-11-11', 21160),
+      close('2026-11-06', 20520),
+      pesos,
+      previousSession('2026-11-11'),
+    ).position;
+    assert.equal(p.dayKnown, true); // antes: "sin dato"
+    assert.equal(p.dayChange, 6400);
+  });
+
   test('acertijo de la vaca: compro a 2.000, vendo a 2.200, recompro a 2.300, vendo a 2.500 → gané 400', () => {
     const ops = [
       op('COMPRA', '2024-01-01', 1, 2000),

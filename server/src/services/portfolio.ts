@@ -229,9 +229,16 @@ const MAX_DAYS_BETWEEN_SESSIONS = 5;
  * Así se saben los feriados sin una lista: en Semana Santa de 2024, la rueda anterior al 03/04 fue el
  * 27/03 (7 días antes), y un activo con precio de ese día sí tiene variación del día. En cambio, si
  * otros activos tienen precio del 12/11 y este recién del 06/11, no operó el día anterior.
+ * Un día en que nada operó no es rueda aunque Yahoo publique filas: el 09 y 10/11/2026 BYMA no operó y
+ * 39 activos tienen una fila del 10/11 con volumen 0 y el cierre del 06/11. Si contara, SPY (sin esa
+ * fila) quedaba "sin dato" el 11/11 aunque operó el 06/11 y el 11/11. Por eso se pide algo operado
+ * (volumen mayor a 0; sin dato de volumen, se cuenta).
  */
 export function previousSession(date: string): string | null {
-  return get<{ d: string | null }>('SELECT MAX(date) AS d FROM prices WHERE date < ?', date)?.d ?? null;
+  // Recorre el índice por fecha de atrás para adelante y para en la primera fila operada
+  return (
+    get<{ d: string }>('SELECT date AS d FROM prices WHERE date < ? AND (volume IS NULL OR volume > 0) ORDER BY date DESC LIMIT 1', date)?.d ?? null
+  );
 }
 
 /**

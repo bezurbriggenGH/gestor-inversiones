@@ -263,6 +263,8 @@ export interface History {
     lastDataDate: string | null;
     /** Cotiza todos los días pero no tiene datos hace más de una semana: no se compara. */
     frozen: boolean;
+    /** El índice tiene datos recién desde esta fecha, posterior a tu primera operación: no se compara. */
+    startsAfter: string | null;
   }[];
   portfolio: { value: number; netInvested: number; gain: number; irr: number | null } | null;
   realReturn: { gain: number; pct: number | null; irr: number | null } | null;

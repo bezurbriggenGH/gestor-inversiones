@@ -44,6 +44,28 @@ describe('Vendiste mucho más de lo que pusiste', () => {
   });
 });
 
+describe('Un índice que empieza después de tu primera operación no se compara', () => {
+  // La primera compra es del 02/01/2025. El S&P 500 tiene datos recién desde el 03/03/2025 ($100) y el Merval
+  // desde el 02/01/2025. Antes, la compra del 02/01 "compraba" S&P al precio del 03/03, que no era el de ese día:
+  // con el SPY de 2019 ($194) contra el primer dato guardado, de 2022 ($1.618), eran 8 veces menos unidades.
+  test('el S&P 500 queda sin comparar y dice desde cuándo tiene datos; el Merval sí se compara', () => {
+    for (const date of ['2025-03-03', '2025-07-01']) run("INSERT INTO index_values (series, date, value) VALUES ('spy', ?, 100)", date);
+    for (const date of ['2025-01-02', '2025-07-01']) run("INSERT INTO index_values (series, date, value) VALUES ('merval', ?, 100)", date);
+    const b = buildHistory(1, 'ARS', 'bolsa');
+    const spy = b.benchmarks.find((x) => x.key === 'spy')!;
+    assert.equal(spy.available, false);
+    assert.equal(spy.value, null);
+    assert.equal(spy.diff, null);
+    assert.equal(spy.startsAfter, '2025-03-03');
+    assert.ok(b.points.every((p) => p.benchmarks.spy === null)); // tampoco se dibuja
+    // Merval plano: 10 unidades a $100, vendo 24 → quedan −14 × $100 = −$1.400, igual que la inflación en cero
+    const merval = b.benchmarks.find((x) => x.key === 'merval')!;
+    assert.equal(merval.available, true);
+    assert.equal(merval.startsAfter, null);
+    assert.equal(merval.value, -1400);
+  });
+});
+
 describe('Simulador: dividendos netos de la retención', () => {
   // $1.000 en una acción local a $100 → 10 acciones. Paga $10 por acción: $100 brutos, 7% de retención → $93.
   run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SIM', 'SIM.BA', 'Simulada', 'ACCION')");
