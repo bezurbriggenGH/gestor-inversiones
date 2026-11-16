@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { run } from '../src/db.ts';
 import { buildHistory, monthlyReturns, plazoFijoIndex, xirr } from '../src/services/history.ts';
-import { DateSeries, adjustForSplits, adjustOperations, assertNoShortSelling, buildPortfolio, computePosition } from '../src/services/portfolio.ts';
+import { DateSeries, adjustForSplits, adjustOperations, assertNoShortSelling, buildPortfolio, computePosition, excludedAssets } from '../src/services/portfolio.ts';
 
 describe('TIR (rendimiento por año)', () => {
   test('pongo $1.000 y al año recibo $1.100 → 10% anual', () => {
@@ -241,42 +241,40 @@ describe('Las pantallas cuentan lo mismo', () => {
   });
 });
 
-describe('Activo sin precios guardados de la época de la operación', () => {
-  // Yahoo no tiene historial de algunos CEDEARs: el único precio guardado es posterior a la compra y a la venta
+describe('Activo con operaciones anteriores a sus precios: la app no lo sigue', () => {
+  // El único precio guardado de NUE es posterior a la compra y a la venta: no se sabe cuánto valía en el medio.
+  // Antes se valuaba a lo que se había pagado, y la suba o baja caía de golpe el día del primer precio.
   run("INSERT INTO users (id, name, email, password_hash) VALUES (2, 'Otra', 'otra@test.com', 'x')");
   run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('NUE', 'NUE.BA', 'Sin historial', 'CEDEAR')");
   run("INSERT INTO user_assets (user_id, ticker) VALUES (2, 'NUE')");
   run("INSERT INTO prices (ticker, date, close) VALUES ('NUE', '2025-04-01', 5850)");
   run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'NUE', 'COMPRA', '2025-02-03', 135, 2910)");
-  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'NUE', 'VENTA', '2025-03-03', 135, 3137.5)");
+  // Y un activo normal del mismo usuario: 10 a $100 que hoy valen $120
+  run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('BIEN', 'BIEN.BA', 'Con historial', 'ACCION')");
+  run("INSERT INTO user_assets (user_id, ticker) VALUES (2, 'BIEN')");
+  run("INSERT INTO prices (ticker, date, close) VALUES ('BIEN', '2025-02-03', 100), ('BIEN', '2025-04-01', 120)");
+  run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'BIEN', 'COMPRA', '2025-02-03', 10, 100)");
 
-  test('el día de la compra vale lo que pagué, no el precio de meses después', () => {
+  test('no entra en la cartera ni en la evolución: solo cuenta BIEN, 10 × $120 = $1.200', () => {
+    const p = buildPortfolio(2, 'ARS', 'bolsa');
+    assert.deepEqual(p.positions.map((x) => x.ticker), ['BIEN']);
+    assert.equal(p.summary.marketValue, 1200);
+    assert.equal(p.summary.totalGain, 200);
     const h = buildHistory(2, 'ARS', 'bolsa');
-    const compra = h.points.find((p) => p.date === '2025-02-03')!;
-    assert.equal(compra.value, 135 * 2910); // $392.850, no 135 × $5.850 = $789.750
+    assert.equal(h.points[0].value, 1000); // el 03/02: 10 × $100, sin los $392.850 de NUE
+    assert.equal(h.points.at(-1)!.value, 1200);
   });
 
-  test('la ganancia aparece en el mes en que vendí: 135 × ($3.137,50 − $2.910) = $30.712,50', () => {
-    const months = buildHistory(2, 'ARS', 'bolsa').monthly;
-    const feb = months.find((m) => m.month === '2025-02')!;
-    const mar = months.find((m) => m.month === '2025-03')!;
-    assert.ok(near(feb.gain, 0)); // antes: +$396.900 inventados
-    assert.ok(near(feb.return, 0));
-    assert.ok(near(mar.gain, 30_712.5));
-    assert.ok(near(mar.return, 30_712.5 / 392_850));
-  });
-
-  test('si lo vendiste antes del primer precio, no hay salto que avisar: la ganancia cae el día de la venta', () => {
-    assert.deepEqual(buildHistory(2, 'ARS', 'bolsa').unpriced, []);
-  });
-
-  test('si todavía lo tenías cuando aparece el primer precio, se avisa: ahí cae de golpe la suba o baja', () => {
-    // Otro activo sin historial que sigo teniendo: comprado el 03/02 y con el primer precio el 01/04
-    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SIG', 'SIG.BA', 'Sin historial', 'CEDEAR')");
-    run("INSERT INTO user_assets (user_id, ticker) VALUES (2, 'SIG')");
-    run("INSERT INTO prices (ticker, date, close) VALUES ('SIG', '2025-04-01', 50)");
-    run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'SIG', 'COMPRA', '2025-02-03', 10, 80)");
-    assert.deepEqual(buildHistory(2, 'ARS', 'bolsa').unpriced, [{ ticker: 'SIG', from: '2025-02-03', until: '2025-04-01' }]);
+  test('figura aparte, con el motivo y con sus operaciones guardadas', () => {
+    assert.deepEqual(excludedAssets(2), [
+      {
+        ticker: 'NUE',
+        name: 'Sin historial',
+        type: 'CEDEAR',
+        reason: 'tiene operaciones desde el 03/02/2025 y la fuente tiene precios confiables recién desde el 01/04/2025',
+        operations: 1,
+      },
+    ]);
   });
 });
 
@@ -284,8 +282,8 @@ describe('Variación del día de la cartera', () => {
   // Dos acciones, 10 de cada una. La última rueda es el 01/04: HOYSI operó, HOYNO no.
   run("INSERT INTO users (id, name, email, password_hash) VALUES (3, 'Tercera', 'tercera@test.com', 'x')");
   for (const [ticker, rows] of [
-    ['HOYSI', [['2025-03-31', 100], ['2025-04-01', 110]]],
-    ['HOYNO', [['2025-03-28', 50], ['2025-03-31', 60]]],
+    ['HOYSI', [['2025-03-03', 40], ['2025-03-31', 100], ['2025-04-01', 110]]],
+    ['HOYNO', [['2025-03-03', 40], ['2025-03-28', 50], ['2025-03-31', 60]]],
   ] as const) {
     run("INSERT INTO assets (ticker, symbol, name, type) VALUES (?, ?, 'Prueba', 'ACCION')", ticker, `${ticker}.BA`);
     run('INSERT INTO user_assets (user_id, ticker) VALUES (3, ?)', ticker);
@@ -308,3 +306,6 @@ describe('Variación del día de la cartera', () => {
     assert.equal(p.positions.find((x) => x.ticker === 'HOYSI')!.dayKnown, true);
   });
 });
+
+// En la app toda operación es de un activo que el usuario agregó a su cartera: acá se agregan todos juntos
+run('INSERT OR IGNORE INTO user_assets (user_id, ticker) SELECT DISTINCT user_id, ticker FROM operations');

@@ -61,6 +61,8 @@ describe('Corregir el historial guardado', () => {
 
   test('CEDEAR: se ajustan los precios viejos, los dividendos viejos y se registra el split', () => {
     save('CED', 'CEDEAR', [...repeat(200, 10), ...repeat(100, 10)]);
+    // La acción en EE.UU. no se movió esos días: eso confirma que fue un cambio de ratio
+    for (const r of series(repeat(50, 20))) run("INSERT INTO index_values (series, date, value) VALUES ('us:CED', ?, ?)", r.date, r.close);
     run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('CED', '2024-01-05', 4)");
     cleanHistory('CED');
     assert.ok(closes('CED').every((c) => c === 100));
@@ -74,6 +76,13 @@ describe('Corregir el historial guardado', () => {
     cleanHistory('CED');
     assert.ok(closes('CED').every((c) => c === 100));
     assert.equal(all("SELECT 1 FROM split_events WHERE ticker = 'CED'").length, 1);
+  });
+
+  test('CEDEAR sin precio de EE.UU.: no se ajusta nada, la app no adivina (así se perdía la suba de 177% de Moderna)', () => {
+    save('SIN', 'CEDEAR', [...repeat(5_210, 10), ...repeat(14_310, 10)]);
+    cleanHistory('SIN');
+    assert.equal(closes('SIN')[0], 5_210);
+    assert.equal(all("SELECT 1 FROM split_events WHERE ticker = 'SIN'").length, 0);
   });
 
   test('acción argentina: una caída fuerte puede ser real (las PASO de 2019) y no se toca', () => {
@@ -156,6 +165,8 @@ describe('Cambio de ratio que Yahoo no informa, con la app actualizando todos lo
     const yahoo = days.map((date, i) => ({ date, open: null, high: null, low: null, close: i < CHANGE ? 100 : 50, volume: null }));
     const weekBefore = (iso: string) => new Date(Date.parse(iso) - 7 * 86_400_000).toISOString().slice(0, 10);
     const compra = { ticker: 'RAT', date: days[5], quantity: 10, price: 100 };
+    // La acción en EE.UU. no se mueve: confirma el cambio de ratio
+    for (const date of days) run("INSERT INTO index_values (series, date, value) VALUES ('us:RAT', ?, 30)", date);
 
     // Cada día la app baja desde una semana antes del último precio guardado (como syncAsset)
     for (let today = CHANGE - 1; today < days.length; today++) {

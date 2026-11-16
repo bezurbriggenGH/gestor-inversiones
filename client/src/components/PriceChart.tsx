@@ -130,7 +130,6 @@ function outcome(op: Operation): { label: string; cls: string; text: string } {
       text: buy ? `Después de comprar, el precio ${moved}.` : `Después de vender, el precio ${moved}.`,
     };
   }
-  if (d.noData) return { label: 'Sin datos', cls: 'bg-card text-muted', text: 'No hay precios guardados de esa época para evaluarla.' };
   return {
     label: 'Esperando',
     cls: 'bg-card text-muted',

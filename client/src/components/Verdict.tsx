@@ -8,8 +8,8 @@ const STYLE: Record<Verdict, string> = {
 };
 const TEXT: Record<Verdict, string> = { ACIERTO: 'Acierto', ERROR: 'Error', NEUTRAL: 'Neutral' };
 
-export function VerdictBadge({ verdict, days, noData }: { verdict: Verdict | null; days?: number | null; noData?: boolean }) {
-  if (!verdict) return <span className="rounded-full bg-card px-2.5 py-0.5 text-xs text-muted">{noData ? 'Sin datos' : 'Esperando'}</span>;
+export function VerdictBadge({ verdict, days }: { verdict: Verdict | null; days?: number | null }) {
+  if (!verdict) return <span className="rounded-full bg-card px-2.5 py-0.5 text-xs text-muted">Esperando</span>;
   return (
     <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${STYLE[verdict]}`}>
       {TEXT[verdict]}
@@ -29,7 +29,7 @@ export function HorizonList({ entry }: { entry: JournalEntry }) {
           {h.available ? (
             <span className={tone(h.change)}>{pct(h.change)}</span>
           ) : (
-            <span className="opacity-60">{h.noData ? 'sin datos' : 'pendiente'}</span>
+            <span className="opacity-60">pendiente</span>
           )}
         </span>
       ))}
@@ -71,11 +71,7 @@ export function MarketLine({ className = 'text-xs', ...info }: MarketInfo & { cl
   return <p className={`${className} ${beat == null ? 'text-muted' : beat ? 'text-up' : 'text-down'}`}>{text}</p>;
 }
 
-/** Ya pasó el plazo para evaluarla, pero no hay precios guardados de esa época. */
-export const lacksPrices = (e: JournalEntry) => !e.verdict && e.horizons.some((h) => !h.available && h.noData);
-
 export function explainVerdict(e: JournalEntry): string {
-  if (lacksPrices(e)) return 'No hay precios guardados de esa época para evaluar esta operación (la fuente no tiene historial de este activo).';
   if (!e.verdict || e.verdictDays == null) return 'Todavía no pasaron 30 días desde la operación.';
   const h = e.horizons.find((x) => x.days === e.verdictDays);
   if (!h || !h.available) return '';

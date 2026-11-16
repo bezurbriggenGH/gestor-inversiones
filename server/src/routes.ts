@@ -8,6 +8,8 @@ import {
   buildAssetDetail,
   buildOperationDetail,
   buildPortfolio,
+  excludedAssets,
+  exclusionReason,
   getRawOperations,
   adjustOperations,
   loadFx,
@@ -27,6 +29,7 @@ import { buildBudget, isMonth, prevMonth } from './services/budget.ts';
 import { CSV_TEMPLATE, parseCsv } from './services/importer.ts';
 import { checkAlerts, listAlerts } from './services/alerts.ts';
 import { searchCatalog } from './catalog.ts';
+import { assetQuality, beforeHistoryProblem } from './services/quality.ts';
 import { simulate } from './services/simulator.ts';
 import { classify, normalizeTicker } from './tickers.ts';
 import { checkRateLimit, currentUser, endSession, login, register, requireUser, startSession, userId } from './auth.ts';
@@ -85,7 +88,8 @@ router.get('/portfolio', async (req, res) => {
   const history = buildHistory(userId(res), 'ARS', fx);
   const target = get<{ target_cedear: number | null }>('SELECT target_cedear FROM users WHERE id = ?', userId(res))?.target_cedear ?? null;
   const review = buildReview(portfolio.positions, portfolio.exposure.sectors, target, arDate());
-  res.json({ ...portfolio, realReturn: history.realReturn, review, errors, updating: !sync.done });
+  // Lo que el usuario cargó y la app no puede seguir (ver quality.ts): se lista aparte, con el motivo
+  res.json({ ...portfolio, realReturn: history.realReturn, review, errors, updating: !sync.done, excluded: excludedAssets(userId(res)) });
 });
 
 /** Objetivo de reparto: qué porcentaje de la cartera querés en CEDEARs (el resto, en acciones). null lo quita. */
@@ -138,6 +142,10 @@ router.get('/simulate', async (req, res) => {
   if (!isRealDate(date)) throw new HttpError(400, 'Elegí una fecha válida');
   await ensureCatalogAsset(ticker);
   await Promise.allSettled([syncAsset(ticker), syncFx(), syncIndices()]);
+  const quality = assetQuality(ticker);
+  if (!quality.ok) throw new HttpError(422, `Por ahora la app no puede simular ${ticker}: ${quality.reason}.`);
+  const tooEarly = beforeHistoryProblem(ticker, date);
+  if (tooEarly) throw new HttpError(400, tooEarly.replace('no puede registrar operaciones anteriores (no las podría valuar)', 'elegí una fecha posterior'));
   const { currency, fx } = q(req);
   res.json(simulate(ticker, amount, date, currency, fx));
 });
@@ -161,6 +169,9 @@ router.post('/assets', async (req, res) => {
     throw new HttpError(409, `${ticker} ya está en tu cartera`);
   }
   await ensureCatalogAsset(ticker);
+  // Solo se agregan activos cuyos datos cumplen todos los requisitos: con esos, todas las funciones valen
+  const quality = assetQuality(ticker);
+  if (!quality.ok) throw new HttpError(422, `Por ahora la app no puede seguir ${ticker}: ${quality.reason}.`);
   run('INSERT INTO user_assets (user_id, ticker) VALUES (?, ?)', userId(res), ticker);
   const asset = get<{ ticker: string; name: string; type: string }>('SELECT ticker, name, type FROM assets WHERE ticker = ?', ticker);
   res.status(201).json(asset);
@@ -190,6 +201,8 @@ router.get('/assets/:ticker', async (req, res) => {
   const decisions = new Map(buildJournal(userId(res), currency, fx, ticker).entries.map((e) => [e.id, decisionOf(e)]));
   res.json({
     ...detail,
+    // Si la app no puede seguir este activo, por qué (no entra en la cartera ni en los cálculos)
+    excluded: exclusionReason(userId(res), ticker),
     operations: detail.operations.map((o) => ({
       ...o,
       imageCount: counts.get(o.id) ?? 0,
@@ -365,7 +378,8 @@ function readAmounts(type: OpType, b: Record<string, unknown>, ticker: string) {
   const quantity = plainNumber(b.quantity);
   const price = plainNumber(b.price);
   const fees = b.fees === '' || b.fees == null ? 0 : plainNumber(b.fees);
-  const problem = weekendProblem(type, date) ?? amountsProblem(type, quantity, price, fees) ?? priceProblem(ticker, type, date, price);
+  const problem =
+    beforeHistoryProblem(ticker, date) ?? weekendProblem(type, date) ?? amountsProblem(type, quantity, price, fees) ?? priceProblem(ticker, type, date, price);
   if (problem) throw new HttpError(400, problem);
   return { date, quantity, price, fees };
 }
@@ -651,6 +665,10 @@ router.post('/import', async (req, res) => {
     if (r.ticker && unknown.has(r.ticker)) {
       r.errors.push(`no encontramos ${r.ticker} en BYMA (por ahora la app maneja acciones y CEDEARs; bonos y fondos todavía no)`);
     }
+    const quality = r.ticker && !unknown.has(r.ticker) && !unreachable.has(r.ticker) && !r.ignored ? assetQuality(r.ticker) : null;
+    if (quality && !quality.ok) r.errors.push(`por ahora la app no puede seguir ${r.ticker}: ${quality.reason}`);
+    const tooEarly = r.ticker && r.date && quality?.ok ? beforeHistoryProblem(r.ticker, r.date) : null;
+    if (tooEarly) r.errors.push(tooEarly.charAt(0).toLowerCase() + tooEarly.slice(1));
     if (r.ticker && unreachable.has(r.ticker)) {
       r.errors.push(`no se pudo consultar Yahoo Finance para verificar ${r.ticker}: revisá la conexión y probá de nuevo`);
     }

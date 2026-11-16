@@ -15,6 +15,7 @@ import { HttpError, addDays } from '../util.ts';
 import { buildCedearInfo, cedearGap } from './cedear.ts';
 import { CEDEAR_RATIOS, usSymbolOf } from '../cedears.ts';
 import { classifyAsset, groupBy } from './exposure.ts';
+import { assetQuality, reliableFrom } from './quality.ts';
 
 export type Currency = 'ARS' | 'USD';
 export type OpType = 'COMPRA' | 'VENTA' | 'DIVIDENDO';
@@ -336,12 +337,45 @@ export function computePosition(
   return { position, realizedByOp };
 }
 
-export function userAssets(userId: number): AssetRow[] {
+/** Todo lo que el usuario agregó, se pueda seguir o no. */
+function allUserAssets(userId: number): AssetRow[] {
   return all<AssetRow>(
     `SELECT a.ticker, a.symbol, a.name, a.type, a.last_sync, a.sector FROM user_assets ua
      JOIN assets a ON a.ticker = ua.ticker WHERE ua.user_id = ? ORDER BY ua.added_at, a.ticker`,
     userId,
   );
+}
+
+/**
+ * Por qué la app no puede seguir un activo de este usuario, o null si lo sigue.
+ * Los datos tienen que pasar el control de calidad (quality.ts) y cubrir todas sus operaciones: con una
+ * compra anterior a los precios que sirven no se sabe cuánto valía la tenencia en el medio.
+ */
+export function exclusionReason(userId: number, ticker: string): string | null {
+  const quality = assetQuality(ticker);
+  if (!quality.ok) return quality.reason;
+  const first = reliableFrom(ticker);
+  const firstOp = get<{ d: string | null }>('SELECT MIN(date) AS d FROM operations WHERE user_id = ? AND ticker = ?', userId, ticker)?.d;
+  if (first && firstOp && firstOp < first) {
+    const dmy = (iso: string) => iso.split('-').reverse().join('/');
+    return `tiene operaciones desde el ${dmy(firstOp)} y la fuente tiene precios confiables recién desde el ${dmy(first)}`;
+  }
+  return null;
+}
+
+/** Los activos del usuario que la app sigue: solo esos entran en la cartera y en todos los cálculos. */
+export function userAssets(userId: number): AssetRow[] {
+  return allUserAssets(userId).filter((a) => exclusionReason(userId, a.ticker) === null);
+}
+
+/** Los que quedaron afuera, con el motivo. Sus operaciones siguen guardadas. */
+export function excludedAssets(userId: number) {
+  return allUserAssets(userId).flatMap((a) => {
+    const reason = exclusionReason(userId, a.ticker);
+    if (reason === null) return [];
+    const operations = get<{ n: number }>('SELECT COUNT(*) AS n FROM operations WHERE user_id = ? AND ticker = ?', userId, a.ticker)!.n;
+    return [{ ticker: a.ticker, name: a.name, type: a.type, reason, operations }];
+  });
 }
 
 export function requireUserAsset(userId: number, ticker: string): AssetRow {
@@ -471,8 +505,11 @@ export function adjustOperations(raw: OperationRow[]): OperationRow[] {
   return withSplitFractions(adjustForSplits(raw));
 }
 
+/** Sin `ticker`: las operaciones de todos los activos que la app sigue (ver userAssets). */
 export function getOperations(userId: number, ticker?: string): OperationRow[] {
-  return adjustOperations(getRawOperations(userId, ticker));
+  if (ticker) return adjustOperations(getRawOperations(userId, ticker));
+  const followed = new Set(userAssets(userId).map((a) => a.ticker));
+  return adjustOperations(getRawOperations(userId).filter((o) => followed.has(o.ticker)));
 }
 
 function lastTwoPrices(ticker: string): [PriceRow | undefined, PriceRow | undefined] {

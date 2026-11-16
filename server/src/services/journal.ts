@@ -174,9 +174,6 @@ export function buildJournal(userId: number, currency: Currency, kind: FxKind, t
       const horizons = HORIZONS.map((days) => {
         const target = addDaysIso(op.date, days);
         if (s.empty || target > lastDate) return { days, available: false as const };
-        // Ya pasó el plazo, pero no hay precios guardados de esa época (Yahoo no tiene historial de
-        // algunos CEDEARs). Sin precio real no se juzga: comparar con uno posterior daría cualquier cosa.
-        if (!s.covers(target)) return { days, available: false as const, noData: true as const };
         const price = conv(s.at(target), target);
         const change = judgeConv(s.at(target), target) / baseUsd - 1;
         return { days, available: true as const, price, change, verdict: judge(type, change) };
@@ -386,7 +383,5 @@ export function decisionOf(entry: ReturnType<typeof buildJournal>['entries'][num
     soldWithin: entry.soldWithin,
     market: entry.market,
     offset: entry.offset,
-    // Ya pasó el plazo, pero no hay precios guardados de esa época para juzgarla
-    noData: !entry.verdict && entry.horizons.some((h) => !h.available && 'noData' in h),
   };
 }

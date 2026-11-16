@@ -134,7 +134,7 @@ export function xirr(flows: { date: string; amount: number }[]): number | null {
 export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   const ops = sortOps(getOperations(userId));
   const fx = loadFx(kind);
-  const empty = { currency, points: [], benchmarks: [], portfolio: null, realReturn: null, monthly: [], unpriced: [] };
+  const empty = { currency, points: [], benchmarks: [], portfolio: null, realReturn: null, monthly: [] };
   if (ops.length === 0) return empty;
 
   const start = ops[0].date;
@@ -181,25 +181,13 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
   for (const k of Object.keys(indices)) units[k] = 0;
   let opIdx = 0;
   let netInvested = 0; // en la moneda elegida, cada flujo convertido en su fecha
-  // Precio de la última compra o venta de cada activo. Se usa para valuarlo los días en que todavía
-  // no hay precios guardados (Yahoo no tiene historial de algunos CEDEARs). Usar el primer precio que
-  // exista, que es posterior, inventa ganancias: 135 a $2.910 valuados ese mismo día a $5.850.
-  const lastTradePrice = new Map<string, number>();
-  // Qué activos se valuaron así y entre qué fechas. La pantalla lo avisa: cuando aparece el primer precio
-  // real, toda la suba o baja de esos días cae de golpe en ese único día (y en ese mes del calendario).
-  const unpriced = new Map<string, { ticker: string; from: string; until: string | null }>();
-  // Solo importa si el día del primer precio todavía lo tenías: si lo vendiste antes, la ganancia cae el
-  // día de la venta, que es cuando se hizo de verdad (no hay salto que avisar)
-  const landed = new Set<string>();
+  // Todos los activos tienen precio desde antes de su primera operación (lo garantiza quality.ts)
   const valueOn = (date: string) => {
     let value = 0;
     for (const [t, qty] of holdings) {
       if (qty <= 1e-9) continue;
       const s = prices.get(t);
-      const covered = s?.covers(date) ?? false;
-      const price = covered ? s!.at(date) : lastTradePrice.get(t);
-      if (!covered && price != null && !unpriced.has(t)) unpriced.set(t, { ticker: t, from: date, until: s && !s.empty ? s.dates[0] : null });
-      if (price != null) value += qty * price;
+      if (s?.covers(date)) value += qty * s.at(date);
     }
     return value;
   };
@@ -213,14 +201,12 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
       const flow = flows[opIdx];
       if (op.type === 'COMPRA') holdings.set(op.ticker, (holdings.get(op.ticker) ?? 0) + op.quantity);
       if (op.type === 'VENTA') holdings.set(op.ticker, (holdings.get(op.ticker) ?? 0) - op.quantity);
-      if (op.type !== 'DIVIDENDO') lastTradePrice.set(op.ticker, op.price);
       netInvested += toCur(flow.amount, flow.date);
       for (const [k, idx] of Object.entries(indices)) {
         if (!idx.empty) units[k] += flow.amount / idx.at(flow.date);
       }
       opIdx++;
     }
-    for (const u of unpriced.values()) if (u.until === date && (holdings.get(u.ticker) ?? 0) > 1e-9) landed.add(u.ticker);
 
     const valueArs = valueOn(date);
     lastValueArs = valueArs;
@@ -291,8 +277,6 @@ export function buildHistory(userId: number, currency: Currency, kind: FxKind) {
     realReturn,
     // En pesos, cada mes también descontada la inflación de ese mes (en dólares no hace falta)
     monthly: monthlyReturns(points, currency === 'ARS' && !inflIdx.empty ? inflIdx : undefined),
-    // Activos que hubo que valuar a su último precio de compra o venta porque no había precios guardados
-    unpriced: [...unpriced.values()].filter((u) => landed.has(u.ticker)),
   };
 }
 

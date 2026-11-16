@@ -22,6 +22,8 @@ before(async () => {
   run("INSERT INTO users (id, name, email, password_hash) VALUES (1, 'Prueba', 'prueba@test.com', 'x')");
   run('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, 1, ?)', 'sesion-de-prueba', Date.now() + 86_400_000);
   run("INSERT INTO assets (ticker, symbol, name, type, last_sync) VALUES ('AAA', 'AAA.BA', 'Prueba', 'ACCION', ?)", Date.now());
+  // AAA cotiza desde el 02/01/2024 (las operaciones no pueden ser anteriores a los precios guardados)
+  run("INSERT INTO prices (ticker, date, close) VALUES ('AAA', '2024-01-02', 100)");
   run("INSERT INTO prices (ticker, date, close) VALUES ('AAA', '2025-01-02', 100)");
   run("INSERT INTO user_assets (user_id, ticker) VALUES (1, 'AAA')");
   // Todo figura como recién actualizado: los tests nunca salen a internet (Yahoo, dólar, índices)

@@ -28,6 +28,11 @@ export interface YahooChart {
   bars: Bar[];
   dividends: Dividend[];
   splits: Split[];
+  /**
+   * ¿La fuente tiene historial de este instrumento? De algunos CEDEARs (META.BA, SDA.BA…) Yahoo solo publica
+   * el precio del día: lo dice en `validRanges` ("1d, 5d" y nada más). Sin ese dato se supone que sí.
+   */
+  hasHistory: boolean;
 }
 
 export class YahooNotFound extends Error {}
@@ -145,6 +150,7 @@ async function requestChart(symbol: string, opts: { from?: Date; range?: string 
     symbol,
     name: meta.longName ?? meta.shortName ?? symbol,
     currency: meta.currency ?? 'ARS',
+    hasHistory: !Array.isArray(meta.validRanges) || meta.validRanges.some((r: string) => r !== '1d' && r !== '5d'),
     bars: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     dividends,
     splits,

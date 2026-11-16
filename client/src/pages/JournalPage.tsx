@@ -5,7 +5,7 @@ import { useJournal } from '../hooks';
 import { useSettings } from '../settings';
 import { date, money, num, pct } from '../format';
 import { Button, ErrorBox, Explain, Loading } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, MarketLine } from '../components/Verdict';
 import { Patterns, WinsSummary, soldWithinText } from '../components/Balance';
 
 // Con menos decisiones evaluadas, un porcentaje dice muy poco (3 de 4 no prueba nada): no se muestra
@@ -174,7 +174,7 @@ export function JournalPage() {
                   {e.offset > 0.999 ? (
                     <span className="rounded-md bg-card px-2 py-0.5 text-xs text-muted">Se compensa</span>
                   ) : (
-                    <VerdictBadge verdict={e.verdict} days={e.verdictDays} noData={lacksPrices(e)} />
+                    <VerdictBadge verdict={e.verdict} days={e.verdictDays} />
                   )}
                 </span>
               </div>

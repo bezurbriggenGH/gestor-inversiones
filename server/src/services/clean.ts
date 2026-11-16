@@ -11,7 +11,7 @@
 // 2. Dividendos imposibles: Yahoo a veces informa montos mil veces más grandes que el
 //    real (por ejemplo ACN pagando $32.822 por un CEDEAR que vale $5.200). Se descartan.
 import { all, run, tx } from '../db.ts';
-import { usSymbolOf } from '../cedears.ts';
+import { confirmSymbolOf } from '../cedears.ts';
 
 /** Un CEDEAR no sube ni baja tanto en un día por el mercado: un salto así es un cambio de ratio. */
 const JUMP = 1.8;
@@ -127,11 +127,11 @@ function fixUnadjustedSplits(ticker: string): void {
 
 function fixRatioChanges(ticker: string): void {
   const rows = all<{ date: string; close: number }>('SELECT date, close FROM prices WHERE ticker = ? ORDER BY date', ticker);
-  // CEDEARs de la tabla: se confirma con el precio de la acción en EE.UU. (lo guarda sync.ts)
-  const symbol = usSymbolOf(ticker);
-  const us = symbol
-    ? all<{ date: string; value: number }>('SELECT date, value FROM index_values WHERE series = ? ORDER BY date', `us:${symbol}`)
-    : undefined;
+  // Siempre se confirma con el precio de la acción en EE.UU. (lo guarda sync.ts). Sin ese precio no se ajusta
+  // nada: la app no adivina. Antes, a un CEDEAR que no está en la tabla de ratios se le tomaba cualquier salto
+  // como cambio de ratio: cuando Moderna subió 177% en un día (de US$ 62,96 a US$ 174,38), 10 CEDEARs pasaron a
+  // ser 3,64 y la ganancia desapareció. Si el salto queda sin confirmar, el activo no se admite (quality.ts).
+  const us = all<{ date: string; value: number }>('SELECT date, value FROM index_values WHERE series = ? ORDER BY date', `us:${confirmSymbolOf(ticker)}`);
   const changes = detectRatioChanges(rows, us);
   if (changes.length === 0) return;
   tx(() => {

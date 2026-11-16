@@ -130,6 +130,12 @@ export function AssetPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {data.excluded && (
+        <p className="rounded-lg border border-line bg-card/40 px-3 py-2 text-sm">
+          La app no puede seguir este activo: {data.excluded}. No entra en tu cartera ni en ninguna cuenta; lo que ves acá abajo es solo lo que
+          hay guardado.
+        </p>
+      )}
       {/* Encabezado: qué activo es y qué se puede hacer con él */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <Link to="/" className="text-2xl text-muted hover:text-text" aria-label="Volver">

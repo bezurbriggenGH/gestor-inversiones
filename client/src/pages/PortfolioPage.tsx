@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { History, PortfolioPosition } from '../api';
+import type { ExcludedAsset, History, PortfolioPosition } from '../api';
 import { useHistory, usePortfolio } from '../hooks';
 import { useSettings } from '../settings';
 import { MISSING_TITLE, capitalize, dayLabel, latestPriceDate, money, num, pct, share, shortDayLabel, tone } from '../format';
@@ -301,10 +301,43 @@ export function PortfolioPage() {
         </div>
       )}
 
+      {data.excluded.length > 0 && <Excluded assets={data.excluded} />}
+
       {history.data && <Evolution history={history.data} />}
-      {history.data && history.data.monthly.length > 0 && <MonthlyReturns months={history.data.monthly} unpriced={history.data.unpriced} />}
+      {history.data && history.data.monthly.length > 0 && <MonthlyReturns months={history.data.monthly} />}
 
       {adding && <AddAssetDialog onClose={() => setAdding(false)} />}
     </div>
+  );
+}
+
+/**
+ * Activos que el usuario cargó y la app no puede seguir. No se esconden: se listan con el motivo, y queda
+ * claro que no entran en ningún número de la pantalla.
+ */
+function Excluded({ assets }: { assets: ExcludedAsset[] }) {
+  return (
+    <section className="rounded-xl border border-line bg-card/40 p-4">
+      <h2 className="text-sm font-semibold">
+        {assets.length === 1 ? '1 activo que la app no puede seguir' : `${assets.length} activos que la app no puede seguir`}
+      </h2>
+      <p className="mt-1 text-xs text-muted">
+        Sus datos no cumplen lo que la app necesita para calcular bien, así que no entran en el valor de la cartera, la ganancia, el Diario ni
+        ninguna otra cuenta de la app. Tus operaciones siguen guardadas: si la fuente empieza a publicar sus datos, vuelven solos.
+      </p>
+      <ul className="mt-3 flex flex-col gap-2 text-sm">
+        {assets.map((a) => (
+          <li key={a.ticker} className="flex flex-wrap items-baseline gap-x-2">
+            <Link to={`/activo/${a.ticker}`} className="font-semibold hover:underline">
+              {a.ticker}
+            </Link>
+            <span className="text-xs text-muted">
+              {a.reason}
+              {a.operations > 0 && ` · ${a.operations} ${a.operations === 1 ? 'operación guardada' : 'operaciones guardadas'}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

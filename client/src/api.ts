@@ -85,6 +85,16 @@ export interface Portfolio {
   errors: string[];
   /** Los precios se están actualizando todavía: lo que se ve es lo último guardado. */
   updating: boolean;
+  /** Activos cargados que la app no puede seguir (sus datos no cumplen los requisitos): no entran en ningún cálculo. */
+  excluded: ExcludedAsset[];
+}
+
+export interface ExcludedAsset {
+  ticker: string;
+  name: string;
+  type: AssetType;
+  reason: string;
+  operations: number;
 }
 
 /** Lo que conviene revisar de la cartera (Composición) */
@@ -156,8 +166,6 @@ export interface OperationDecision {
   market: JournalEntry['market'];
   /** Qué parte se compensa con una operación contraria del mismo día (ver JournalEntry). */
   offset: number;
-  /** Ya pasó el plazo pero no hay precios guardados de esa época. */
-  noData: boolean;
 }
 
 export interface PricePoint {
@@ -188,6 +196,8 @@ export interface AssetDetail {
   series: PricePoint[];
   pendingDividends: PendingDividend[];
   cedear: CedearInfo | null;
+  /** Si la app no puede seguir este activo, por qué (no entra en la cartera ni en los cálculos). */
+  excluded: string | null;
 }
 
 export type CedearInfo =
@@ -258,8 +268,6 @@ export interface History {
   realReturn: { gain: number; pct: number | null; irr: number | null } | null;
   /** Rendimiento de cada mes. En pesos, `real` es el mismo descontada la inflación de esos días (en dólares, null). */
   monthly: { month: string; return: number; gain: number; inflation: number | null; real: number | null }[];
-  /** Activos valuados a su último precio de operación porque no había precios guardados, y desde cuándo hay (until). */
-  unpriced: { ticker: string; from: string; until: string | null }[];
 }
 
 export type Verdict = 'ACIERTO' | 'ERROR' | 'NEUTRAL';
@@ -274,7 +282,7 @@ export interface JournalEntry {
   note_title: string | null;
   note_body: string | null;
   hasNote: boolean;
-  horizons: ({ days: number; available: false; noData?: true } | { days: number; available: true; price: number; change: number; verdict: Verdict })[];
+  horizons: ({ days: number; available: false } | { days: number; available: true; price: number; change: number; verdict: Verdict })[];
   sinceChange: number | null;
   verdict: Verdict | null;
   verdictDays: number | null;

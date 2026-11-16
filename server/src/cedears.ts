@@ -22,6 +22,15 @@ export const CEDEAR_RATIOS: Record<string, number> = {
 // Tickers de BYMA que en EE.UU. cotizan con otro símbolo
 const US_SYMBOL: Record<string, string> = { BRKB: 'BRK-B', DISN: 'DIS' };
 
+/**
+ * Símbolo de la acción en EE.UU. para confirmar un cambio de ratio: el de la tabla o, si el CEDEAR no está en
+ * la tabla, su mismo ticker (MRNA → MRNA). No hace falta saber el ratio: alcanza con ver si la acción de afuera
+ * también saltó ese día.
+ */
+export function confirmSymbolOf(ticker: string): string {
+  return US_SYMBOL[ticker] ?? ticker;
+}
+
 export function usSymbolOf(ticker: string): string | null {
   return ticker in CEDEAR_RATIOS ? (US_SYMBOL[ticker] ?? ticker) : null;
 }

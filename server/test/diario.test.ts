@@ -43,23 +43,16 @@ describe('Diario de decisiones: se juzga en dólares', () => {
   }
 });
 
-describe('Diario de decisiones: sin precios de la época no se juzga', () => {
-  // El único precio guardado es de junio; la compra es de enero
+describe('Diario de decisiones: un activo con operaciones anteriores a sus precios no se juzga', () => {
+  // El único precio guardado es de junio; la compra es de enero. La app no sigue ese activo (ver quality.ts):
+  // antes daba "acierto de +100%" contra el precio de junio, y después hubo que agregar un "sin datos".
   run("INSERT INTO users (id, name, email, password_hash) VALUES (2, 'Otra', 'otra@test.com', 'x')");
   run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('NUE', 'NUE.BA', 'Sin historial', 'CEDEAR')");
   run("INSERT INTO prices (ticker, date, close) VALUES ('NUE', '2025-06-02', 5850)");
   run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (2, 'NUE', 'COMPRA', '2025-01-02', 10, 2910)");
 
-  test('a 30 y 90 días figura "sin datos" y no hay veredicto (antes: acierto de +100% contra el precio de junio)', () => {
-    const [entry] = buildJournal(2, 'ARS', 'bolsa').entries;
-    for (const days of [30, 90]) {
-      const h = entry.horizons.find((x) => x.days === days)!;
-      assert.equal(h.available, false);
-      assert.equal('noData' in h && h.noData, true);
-    }
-    assert.equal(entry.verdict, null);
-    // A 180 días (01/07) todavía no hay precio posterior guardado: sigue pendiente, no "sin datos"
-    assert.equal('noData' in entry.horizons.find((x) => x.days === 180)!, false);
+  test('no aparece en el Diario', () => {
+    assert.deepEqual(buildJournal(2, 'ARS', 'bolsa').entries, []);
   });
 });
 
@@ -71,7 +64,6 @@ describe('Lo que se marca en el gráfico de un activo', () => {
     assert.equal(d.days, 90);
     assert.ok(near(d.change!, -0.12));
     assert.equal(d.missed, null); // no es una venta
-    assert.equal(d.noData, false);
   });
 
   test('pidiendo un activo, vienen solo sus operaciones', () => {
@@ -79,11 +71,6 @@ describe('Lo que se marca en el gráfico de un activo', () => {
     assert.equal(buildJournal(2, 'ARS', 'bolsa', 'AAA').entries.length, 0); // el otro usuario no tiene AAA
   });
 
-  test('sin precios de la época: sin veredicto y marcada como "sin datos"', () => {
-    const d = decisionOf(buildJournal(2, 'ARS', 'bolsa', 'NUE').entries[0]);
-    assert.equal(d.verdict, null);
-    assert.equal(d.noData, true);
-  });
 });
 
 describe('Diario de decisiones: contra el mercado', () => {
@@ -136,6 +123,7 @@ describe('Diario de decisiones: contra el mercado', () => {
     run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('EMP', 'EMP.BA', 'Prueba', 'CEDEAR')");
     run("INSERT INTO prices (ticker, date, close) VALUES ('EMP', '2025-07-01', 1000), ('EMP', '2025-09-29', 1090)");
     run("INSERT INTO operations (user_id, ticker, type, date, quantity, price) VALUES (5, 'EMP', 'COMPRA', '2025-07-01', 10, 1000)");
+    run("INSERT INTO user_assets (user_id, ticker) VALUES (5, 'EMP')");
     const j = buildJournal(5, 'ARS', 'bolsa');
     assert.equal(j.entries[0].verdict, 'ACIERTO'); // subió 9%
     assert.ok(near(j.entries[0].market!.relative, 1.09 / 1.1 - 1));
@@ -277,3 +265,6 @@ describe('Margen de error de los porcentajes del Diario', () => {
     assert.equal(marginOfError(3, 4), null);
   });
 });
+
+// En la app toda operación es de un activo que el usuario agregó a su cartera: acá se agregan todos juntos
+run('INSERT OR IGNORE INTO user_assets (user_id, ticker) SELECT DISTINCT user_id, ticker FROM operations');

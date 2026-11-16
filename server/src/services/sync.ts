@@ -9,7 +9,7 @@ import { fetchDepositRate, fetchIpc, fetchYahooSeries, type IndexPoint } from '.
 import { checkAlerts } from './alerts.ts';
 import { cleanHistory, unadjustedSplits } from './clean.ts';
 import { addDays, arDate, lastMarketTime } from '../util.ts';
-import { usSymbolOf } from '../cedears.ts';
+import { confirmSymbolOf, usSymbolOf } from '../cedears.ts';
 import { adjustForSplits } from './portfolio.ts';
 
 const PRICE_TTL_MS = 15 * 60_000; // precios: con el mercado abierto, como mucho cada 15 minutos
@@ -82,6 +82,12 @@ const failures = new Map<string, { until: number; delay: number; message: string
 
 function markSynced(key: string) {
   run('INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value', key, Date.now());
+}
+
+/** Anota si la fuente tiene historial de este activo (lo dice el proveedor; lo usa quality.ts). */
+function markHistory(ticker: string, hasHistory: boolean) {
+  if (hasHistory) run('DELETE FROM sync_state WHERE key = ?', `nohist:${ticker}`);
+  else markSynced(`nohist:${ticker}`);
 }
 
 export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = [], splits: Split[] = []): void {
@@ -192,6 +198,7 @@ async function downloadAsset(ticker: string, symbol: string): Promise<void> {
   // Solo se reemplaza el historial si Yahoo devolvió uno completo (a veces devuelve solo el día de hoy)
   if (full && chart.bars.length >= stored * 0.9) run('DELETE FROM prices WHERE ticker = ?', ticker);
   saveBars(ticker, chart.bars, chart.dividends, chart.splits);
+  markHistory(ticker, chart.hasHistory);
   if (!full || chart.bars.length >= stored * 0.9) markSynced(splitsKey);
   run('UPDATE assets SET last_sync = ? WHERE ticker = ?', Date.now(), ticker);
   checkAlerts(ticker);
@@ -226,8 +233,9 @@ async function syncSector(ticker: string, symbol: string): Promise<void> {
  * (Yahoo los informa mal en BYMA: pasados a pesos con el dólar de hoy, no con el de esa fecha).
  */
 async function syncUnderlying(ticker: string): Promise<void> {
-  const symbol = usSymbolOf(ticker);
-  if (!symbol) return;
+  // De todos los CEDEARs, estén o no en la tabla de ratios: el precio de afuera es lo que confirma un cambio de ratio
+  if (get<{ type: string }>('SELECT type FROM assets WHERE ticker = ?', ticker)?.type !== 'CEDEAR') return;
+  const symbol = confirmSymbolOf(ticker);
   const series = `us:${symbol}`;
   const divSeries = `usdiv:${symbol}`;
   // Se baja completo la primera vez (o si nunca se guardaron sus dividendos)
@@ -342,6 +350,7 @@ export async function ensureAsset(ticker: string, symbol: string, type: 'ACCION'
   // Antes de guardar los precios de BYMA, por el control de cambios de ratio (ver downloadAsset)
   if (type === 'CEDEAR') await syncUnderlying(ticker);
   saveBars(ticker, chart.bars, chart.dividends, chart.splits);
+  markHistory(ticker, chart.hasHistory);
   markSynced(`splits:${ticker}`);
   await syncSector(ticker, symbol);
 }

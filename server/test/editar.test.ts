@@ -187,3 +187,18 @@ describe('El dividendo que sugiere la app, el mismo día de un reparto de accion
     assert.equal(r.status, 201, r.error ?? '');
   });
 });
+
+describe('Operaciones anteriores a los precios guardados', () => {
+  // AAA tiene precios desde el 02/01/2025: de antes no se puede saber cuánto valía la tenencia
+  test('una compra del 02/12/2024 se rechaza y dice desde cuándo hay precios', async () => {
+    const r = await call('POST', '/assets/AAA/operations', { type: 'COMPRA', date: '2024-12-02', quantity: 1, price: 100, fees: 0 });
+    assert.equal(r.status, 400);
+    assert.match(r.error!, /precios confiables de AAA desde el 02\/01\/2025/);
+  });
+
+  test('tampoco se puede mover una compra ya cargada a una fecha anterior', async () => {
+    const id = await add('AAA', {});
+    assert.equal((await edit(id, { date: '2024-12-02' })).status, 400);
+    assert.equal(saved(id).date, '2025-01-02');
+  });
+});

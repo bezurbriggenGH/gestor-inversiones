@@ -6,7 +6,7 @@ import { DATA_KEYS, useJournal, useOperation } from '../hooks';
 import { useSettings } from '../settings';
 import { FX_LABEL, date, money, num, pct, tone } from '../format';
 import { Button, ErrorBox, Field, Loading, inputCls } from '../components/ui';
-import { HorizonList, VerdictBadge, explainVerdict, lacksPrices, MarketLine } from '../components/Verdict';
+import { HorizonList, VerdictBadge, explainVerdict, MarketLine } from '../components/Verdict';
 import { OperationPhotos } from '../components/OperationPhotos';
 import { OperationForm } from '../components/OperationForm';
 
@@ -179,7 +179,7 @@ export function OperationPage() {
             {entry.offset > 0.999 ? (
               <span className="rounded-md bg-card px-2 py-0.5 text-xs text-muted">Se compensa</span>
             ) : (
-              <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} noData={lacksPrices(entry)} />
+              <VerdictBadge verdict={entry.verdict} days={entry.verdictDays} />
             )}
           </div>
           {entry.offset > 0.999 ? (

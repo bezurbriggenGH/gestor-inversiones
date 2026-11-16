@@ -39,8 +39,9 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias. Aplica los mismos controles que el formulario (ventas sin respaldo, dividendos imposibles, fechas). Una fila es duplicada si ya hay una igual cargada, contando cuántas: si hay 2 compras idénticas y el archivo trae 3, entra 1. Además, y si una fila de un activo falla no importa ninguna de ese activo: sola, una parte dejaría una tenencia distinta a la del broker.
-- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos. Si Yahoo no informa un cambio de ratio de un CEDEAR de la tabla, la app lo detecta por el salto de precio y lo confirma con la acción en EE.UU.: si allá también se desplomó, es una caída real y no se toca. Y si Yahoo informa un split pero deja los precios anteriores sin dividir (el precio cae ese día por el factor del split: de $16.350 a $1.640 en un 10 a 1), la app los ajusta.
+- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos. Yahoo no informa los cambios de ratio de los CEDEARs (el de AAPL de 10 a 20, por ejemplo): la app los detecta por el salto de precio y los confirma siempre con la acción en EE.UU. Si allá el precio también saltó, fue una suba o una caída real y no se toca; si no hay precio de EE.UU. para confirmarlo, la app no adivina y no admite ese activo. Y si Yahoo informa un split pero deja los precios anteriores sin dividir (el precio cae ese día por el factor del split: de $16.350 a $1.640 en un 10 a 1), la app los ajusta.
 - **Buscador** con más de 170 acciones argentinas y CEDEARs.
+- **Solo activos con datos completos**: antes de agregar un activo, la app revisa sus datos (ver "Qué activos admite la app"). Si no cumplen, no lo agrega y dice por qué. Así todas las funciones valen completas para todo lo que está en la cartera.
 - **Cuentas de usuario** con email y contraseña.
 - **Instalable** en el celular o la compu (PWA).
 
@@ -83,9 +84,7 @@ Mientras la app está prendida, se consultan las fuentes de datos solo cuando el
 cambiado: con BYMA abierto (lunes a viernes de 11 a 17, hora argentina) como mucho cada 15
 minutos, y una vez después del cierre para guardar el precio final. De noche y los fines de semana
 no se consulta nada. Si la app estuvo apagada varios días, al prenderla se completan los días que
-falten. La excepción son unos pocos CEDEARs de los que Yahoo solo publica el precio del día, sin historial
-(por ejemplo SDA o XP): de esos queda guardado solo el precio de los días en que la app estuvo prendida
-después del cierre, y la app lo avisa ("sin dato", "no hay precios de antes").
+falten.
 
 ## Tests
 
@@ -102,9 +101,10 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | Archivo | Qué comprueba |
 |---|---|
 | `server/test/cartera.test.ts` | Precio promedio, ganancias, comisiones, dividendos, dólares, ventas de más, variación del día con feriados largos |
-| `server/test/historia.test.ts` | TIR (y que no se anualice con menos de un año), rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
+| `server/test/historia.test.ts` | TIR (y que no se anualice con menos de un año), rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo, y que un activo con operaciones anteriores a sus precios quede afuera de los cálculos |
 | `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención y, en dólares, con el dólar de su día; ni el simulador ni el gráfico en dólares usan fechas anteriores a las cotizaciones del dólar guardadas |
 | `server/test/inflacion.test.ts` | Índice de inflación armado con el IPC: meses encadenados, reparto por día y meses sin publicar |
+| `server/test/calidad.test.ts` | Qué activos admite la app: sin historial, precio quieto, split que no coincide con el precio, dato suelto, salto sin confirmar con EE.UU., otro instrumento; y desde qué fecha sirven los precios |
 | `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, splits informados sin ajustar, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta, que el Diario de decisiones juzgue en dólares, la comparación contra el mercado, órdenes partidas y cuándo una diferencia puede ser casualidad |
 | `server/test/balance.test.ts` | ¿Y si no hubieras tocado nada? (con la inflación), comisiones (también descontada la inflación), qué pasó con lo que vendiste y patrones del Diario |
@@ -143,7 +143,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | Tasa de plazo fijo | ArgentinaDatos |
 
 Todas son públicas y no requieren clave. La app guarda todo en su base de datos y cada
-actualización pide **solo los días que faltan**, así que aunque no se abra por semanas no se pierde nada (salvo en los activos sin historial en Yahoo; ver "Cuándo se actualizan los precios").
+actualización pide **solo los días que faltan**, así que aunque no se abra por semanas no se pierde nada.
 
 ## Estructura
 
@@ -152,7 +152,8 @@ server/src/
   providers/     → consultas a Yahoo, dólar e índices
   services/
     sync.ts            → mantiene precios, dólar e índices al día
-    clean.ts           → corrige datos de Yahoo (cambios de ratio no informados, dividendos imposibles)
+    clean.ts           → lleva los datos de Yahoo a una escala única (cambios de ratio confirmados con EE.UU., splits sin ajustar, dividendos imposibles)
+    quality.ts         → control de calidad de los datos: qué activos admite la app
     portfolio.ts       → cálculos contables (PPP, resultados, dividendos, splits, conversión)
     history.ts         → evolución, benchmarks y TIR
     journal.ts         → diario de decisiones
@@ -175,6 +176,30 @@ client/src/
   lazyPage.tsx   → carga de pantallas a pedido (si la app se recompiló estando abierta, recarga una vez)
 ```
 
+## Qué activos admite la app
+
+La fuente de precios es gratuita y no oficial, y de algunos activos sus datos vienen incompletos o mal.
+En vez de emparchar cada caso, la app tiene un solo control (`server/src/services/quality.ts`) y trabaja
+únicamente con los activos que lo pasan. Requisitos:
+
+1. **Historial**: la fuente publica precios de días anteriores, no solo el de hoy (de META o SDA, por ejemplo, Yahoo solo da el precio del día).
+2. **Precio vivo**: las últimas 10 ruedas no repiten el mismo precio con volumen cero.
+3. **Splits coherentes**: después de un split grande, el precio sigue en la misma escala.
+4. **Sin datos sueltos**: ningún día el precio salta a casi el doble (o la mitad) y vuelve al día siguiente.
+5. **Saltos confirmados** (CEDEARs): un salto grande y sostenido tiene el precio de EE.UU. para saber si fue real o un cambio de ratio.
+6. **Es el activo que dice ser** (CEDEARs de la tabla de ratios): el precio corresponde al ratio.
+
+Además, las operaciones de un activo no pueden ser anteriores a sus **precios confiables**: el primer precio
+guardado o, si hubo un tramo con el precio quieto (10 ruedas o más con el mismo cierre y sin operaciones), el
+primero posterior a ese tramo.
+
+Un activo que no cumple no se puede agregar ni simular. Si ya estaba cargado, queda afuera de todos los
+cálculos (valor de la cartera, ganancia, evolución, Diario, comparativa) y la portada lo lista aparte con el
+motivo; sus operaciones siguen guardadas y, si la fuente empieza a publicar bien sus datos, vuelve solo.
+
+El día que se conecte una fuente de datos mejor, cambia el proveedor (`server/src/providers/`) y este control
+deja pasar más activos: el resto de la app no se toca.
+
 ## Criterios de cálculo
 
 - **Costo por Precio Promedio Ponderado (PPP)**, comisiones incluidas.
@@ -188,7 +213,7 @@ client/src/
 - **TIR**: tasa anual que iguala a cero el valor presente de todos los flujos (incluido el valor actual). Con menos de un año de operaciones no se calcula: anualizar un período corto exagera (20% en dos meses se leería como casi +200% por año), y las normas internacionales de rendimiento (GIPS) piden no hacerlo.
 - **Plazo fijo**: tasa de depósitos a 30 días, renovado cada mes (capitalización mensual).
 - **Diario**: acierto si a los 90 días el precio fue a favor de la decisión por más de 2%. Mide el momento de cada decisión, no si se ganó plata: eso se ve aparte en "Ventas con ganancia" (resultado de cada venta contra el precio promedio). Además se compara con el mercado en el mismo plazo, en dólares: S&P 500 (CEDEAR SPY) para CEDEARs y Merval para acciones. Diferencia = (1 + cambio del activo) ÷ (1 + cambio del índice) − 1; una compra le gana al mercado si es positiva, una venta si es negativa. Si el índice no tiene datos en esas fechas, no se compara. Los porcentajes cuentan decisiones: una orden que el broker partió en varias el mismo día es una sola. Los porcentajes solo cuentan decisiones que ya cumplieron 90 días, y contra el mercado una diferencia de menos de 2% es empate. Una diferencia entre dos grupos se afirma solo si pasa la prueba de dos proporciones con al menos 10 decisiones de cada lado, con z ≥ 2,39 (el 5% de error se reparte entre las 3 comparaciones: corrección de Bonferroni), y si sigue pasando al sacar cualquier activo de a uno (la prueba supone decisiones independientes, y 31 compras de la misma acción no lo son). "Ventas con ganancia" se cuenta en dólares. Cada porcentaje muestra su margen de error (95% de confianza: 1,96 × √(p × (1 − p) ÷ n)); no se compara contra 50%, porque elegir al azar no da 50%.
-- **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias. Un activo sin precios guardados se valúa a su último precio de operación hasta que aparece uno, y el calendario marca con * el mes en que cae ese salto. En pesos se descuenta la inflación del mes: real = (1 + rendimiento) ÷ (1 + inflación) − 1. No coincide con la TIR y no tiene por qué: la TIR pesa más los meses con más plata puesta; el ponderado por tiempo pesa todos igual.
+- **Rendimiento mensual**: ponderado por tiempo (se encadena el rendimiento de cada día descontando lo que entró o salió), así las compras no se confunden con ganancias. En pesos se descuenta la inflación del mes: real = (1 + rendimiento) ÷ (1 + inflación) − 1. No coincide con la TIR y no tiene por qué: la TIR pesa más los meses con más plata puesta; el ponderado por tiempo pesa todos igual.
 - **Inflación**: IPC mensual del INDEC, repartido parejo entre los días de cada mes (10% en un mes de 31 días → 1,1^(1/31) por día); el mes todavía sin publicar se estima con el último dato. Antes se usaba el índice UVA, que sigue al IPC con unos dos meses de atraso: de febrero a diciembre de 2024 subió 134% contra 80,5% del IPC, y a quien empezó a invertir en febrero de 2024 le cobraba la inflación de diciembre y enero.
 - **Splits**: una operación anterior a un split se multiplica en cantidad y se divide en precio por el factor del split; el monto total no cambia. Por eso el precio que sugiere el formulario (y los dividendos sugeridos) para una fecha anterior a un split está en la escala de esa fecha, como lo informó el broker: el cierre guardado × el factor. Si el split deja una fracción de acción, se toma como cobrada en efectivo al precio de ese día (el broker solo acredita acciones enteras). Si ese pago ya está cargado como un cobro en los 15 días siguientes, por un monto parecido, no se cuenta de nuevo.
 - **Variación del día**: valor de hoy − valor de ayer − plata puesta hoy; lo comprado hoy se mide contra lo que pagaste. Si falta el precio de la última rueda o el de la anterior, el activo no suma al día ni a la base del %, y se muestra "sin dato". La rueda anterior es el último día anterior con precio de algún activo, así los feriados largos (Semana Santa) no se confunden con un activo que no operó.
