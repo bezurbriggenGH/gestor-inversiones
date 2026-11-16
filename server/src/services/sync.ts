@@ -7,7 +7,7 @@ import { inCatalog, translateSector } from './exposure.ts';
 import { FX_KINDS, fetchFxHistory, fetchFxToday, type FxPoint, type FxKind } from '../providers/dolar.ts';
 import { fetchDepositRate, fetchIpc, fetchYahooSeries, type IndexPoint } from '../providers/indices.ts';
 import { checkAlerts } from './alerts.ts';
-import { cleanHistory } from './clean.ts';
+import { cleanHistory, unadjustedSplits } from './clean.ts';
 import { addDays, arDate, lastMarketTime } from '../util.ts';
 import { usSymbolOf } from '../cedears.ts';
 import { adjustForSplits } from './portfolio.ts';
@@ -107,9 +107,11 @@ export function saveBars(ticker: string, bars: Bar[], dividends: Dividend[] = []
     const first = bars[0].date;
     const last = bars[bars.length - 1].date;
     const reported = new Set(splits.map((s) => s.date));
-    const unreported = all<Split>('SELECT date, factor FROM split_events WHERE ticker = ? AND date > ? AND date <= ?', ticker, first, last).filter(
-      (s) => !reported.has(s.date),
-    );
+    const unreported = all<Split>('SELECT date, factor FROM split_events WHERE ticker = ? AND date > ? AND date <= ?', ticker, first, last)
+      .filter((s) => !reported.has(s.date))
+      // Y los splits que Yahoo sí informa pero sin ajustar los precios anteriores (ver unadjustedSplits):
+      // esos días también vienen en la escala vieja, y por el mismo motivo se ajustan antes de guardarlos
+      .concat(unadjustedSplits(bars, splits.filter((s) => s.date > first && s.date <= last)));
     const scale = (date: string) => unreported.filter((s) => date < s.date).reduce((f, s) => f * s.factor, 1);
     const div = (v: number | null, f: number) => (v == null ? null : v / f);
     bars = bars.map((b) => {

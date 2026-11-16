@@ -3,7 +3,7 @@ import './helpers.ts';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { all, run } from '../src/db.ts';
-import { cleanHistory, detectRatioChanges } from '../src/services/clean.ts';
+import { cleanHistory, detectRatioChanges, unadjustedSplits } from '../src/services/clean.ts';
 import { adjustForSplits, dividendEvents } from '../src/services/portfolio.ts';
 import { saveBars } from '../src/services/sync.ts';
 
@@ -167,6 +167,65 @@ describe('Cambio de ratio que Yahoo no informa, con la app actualizando todos lo
       assert.equal(adjustForSplits([compra])[0].quantity, 20, `tenencia al ${days[today]}`);
       const closes = all<{ close: number }>("SELECT close FROM prices WHERE ticker = 'RAT'").map((r) => r.close);
       assert.ok(closes.every((c) => c === 50), `precios al ${days[today]}`);
+    }
+  });
+});
+
+describe('Split que Yahoo informa pero sin ajustar los precios anteriores', () => {
+  const split = [{ date: '2024-01-11', factor: 10 }];
+
+  test('MIRG: split 10 a 1 y el precio pasa de $16.350 a $1.640 ese día → el historial quedó sin ajustar', () => {
+    assert.deepEqual(unadjustedSplits(series([...repeat(16_350, 10), ...repeat(1_640, 10)]), split), split);
+  });
+
+  test('YPFD: mismo split, pero Yahoo ya ajustó ($8.290 → $8.105): no hay nada que corregir', () => {
+    assert.deepEqual(unadjustedSplits(series([...repeat(8_290, 10), ...repeat(8_105, 10)]), split), []);
+  });
+
+  test('una caída de 45% el día de un split 10 a 1 no es el split sin ajustar (el precio tendría que caer 90%)', () => {
+    assert.deepEqual(unadjustedSplits(series([...repeat(1_000, 10), ...repeat(550, 10)]), split), []);
+  });
+
+  test('un reparto de acciones del 1% no se mira: no se distingue de un día normal', () => {
+    assert.deepEqual(unadjustedSplits(series([...repeat(101, 10), ...repeat(100, 10)]), [{ date: '2024-01-11', factor: 1.01 }]), []);
+  });
+
+  test('acción argentina: los precios anteriores se dividen por 10 una sola vez, aunque se corrija dos veces', () => {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('MIR', 'MIR.BA', 'Prueba', 'ACCION')");
+    for (const r of series([...repeat(16_350, 10), ...repeat(1_640, 10)])) run("INSERT INTO prices (ticker, date, close) VALUES ('MIR', ?, ?)", r.date, r.close);
+    run("INSERT INTO split_events (ticker, date, factor) VALUES ('MIR', '2024-01-11', 10)");
+    run("INSERT INTO dividend_events (ticker, date, amount) VALUES ('MIR', '2024-01-05', 300)");
+    const closes = () => all<{ close: number }>("SELECT close FROM prices WHERE ticker = 'MIR' ORDER BY date").map((r) => r.close);
+    cleanHistory('MIR');
+    assert.deepEqual(closes(), [...repeat(1_635, 10), ...repeat(1_640, 10)]);
+    assert.equal(all<{ amount: number }>("SELECT amount FROM dividend_events WHERE ticker = 'MIR'")[0].amount, 30);
+    cleanHistory('MIR');
+    assert.deepEqual(closes(), [...repeat(1_635, 10), ...repeat(1_640, 10)]);
+  });
+
+  test('con la app actualizando todos los días: compré 5 a $1.000, split 10 a 1 → 50 a $100 y ningún precio queda en $1.000', () => {
+    run("INSERT INTO assets (ticker, symbol, name, type) VALUES ('SPL', 'SPL.BA', 'Prueba', 'ACCION')");
+    const days: string[] = [];
+    for (const d = new Date('2026-03-02T00:00:00Z'); days.length < 50; d.setUTCDate(d.getUTCDate() + 1)) {
+      if (d.getUTCDay() % 6 !== 0) days.push(d.toISOString().slice(0, 10));
+    }
+    const CHANGE = 40;
+    // Yahoo informa el split desde ese día, pero nunca ajusta los precios anteriores
+    const yahoo = days.map((date, i) => ({ date, open: null, high: null, low: null, close: i < CHANGE ? 1000 : 100, volume: null }));
+    const weekBefore = (iso: string) => new Date(Date.parse(iso) - 7 * 86_400_000).toISOString().slice(0, 10);
+    const compra = { ticker: 'SPL', date: days[5], quantity: 5, price: 1000 };
+    for (let today = CHANGE - 1; today < days.length; today++) {
+      const last = all<{ d: string | null }>("SELECT MAX(date) AS d FROM prices WHERE ticker = 'SPL'")[0].d;
+      const reported = today >= CHANGE ? [{ date: days[CHANGE], factor: 10 }] : [];
+      // El día que aparece un split nuevo la app vuelve a bajar todo el historial (como downloadAsset)
+      const full = today === CHANGE;
+      saveBars('SPL', yahoo.filter((b) => (full || !last || b.date >= weekBefore(last)) && b.date <= days[today]), [], reported);
+      if (today < CHANGE) continue;
+      const adjusted = adjustForSplits([compra])[0];
+      assert.equal(adjusted.quantity, 50, `tenencia al ${days[today]}`);
+      assert.equal(adjusted.price, 100, `precio de compra al ${days[today]}`);
+      const closes = all<{ close: number }>("SELECT close FROM prices WHERE ticker = 'SPL'").map((r) => r.close);
+      assert.ok(closes.every((c) => c === 100), `precios al ${days[today]}`);
     }
   });
 });

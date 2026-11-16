@@ -39,7 +39,7 @@ reales actualizados día a día y vista en **pesos o dólares** (MEP o CCL).
 - **Justificación de cada operación**: por qué la hiciste, un link y hasta 10 fotos (capturas del gráfico, de una noticia o del broker; también se pueden pegar con Ctrl+V). Se puede agregar después, también en las operaciones importadas.
 - **Alertas de precio**: aviso en la app y notificación del navegador.
 - **Importar operaciones** desde el Excel (.xlsx) o CSV de tu broker. Reconoce la "Cuenta Corriente" de Bull Market tal como se descarga e ignora depósitos y transferencias. Aplica los mismos controles que el formulario (ventas sin respaldo, dividendos imposibles, fechas). Una fila es duplicada si ya hay una igual cargada, contando cuántas: si hay 2 compras idénticas y el archivo trae 3, entra 1. Además, y si una fila de un activo falla no importa ninguna de ese activo: sola, una parte dejaría una tenencia distinta a la del broker.
-- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos. Si Yahoo no informa un cambio de ratio de un CEDEAR de la tabla, la app lo detecta por el salto de precio y lo confirma con la acción en EE.UU.: si allá también se desplomó, es una caída real y no se toca.
+- **Cambios de ratio y splits**: las operaciones anteriores se ajustan solas (por ejemplo, SPY 3:1), igual que los precios históricos. Si Yahoo no informa un cambio de ratio de un CEDEAR de la tabla, la app lo detecta por el salto de precio y lo confirma con la acción en EE.UU.: si allá también se desplomó, es una caída real y no se toca. Y si Yahoo informa un split pero deja los precios anteriores sin dividir (el precio cae ese día por el factor del split: de $16.350 a $1.640 en un 10 a 1), la app los ajusta.
 - **Buscador** con más de 170 acciones argentinas y CEDEARs.
 - **Cuentas de usuario** con email y contraseña.
 - **Instalable** en el celular o la compu (PWA).
@@ -103,7 +103,7 @@ Cada archivo de tests usa una base de datos vacía y temporal, así que nunca to
 | `server/test/historia.test.ts` | TIR (y que no se anualice con menos de un año), rendimiento mes a mes, plazo fijo, splits, que las pantallas den lo mismo |
 | `server/test/comparativa.test.ts` | Ventas por más de lo que se puso (la comparación contra la inflación se da en plata) y dividendos del simulador netos de retención y, en dólares, con el dólar de su día; el simulador no acepta fechas anteriores a las cotizaciones del dólar guardadas |
 | `server/test/inflacion.test.ts` | Índice de inflación armado con el IPC: meses encadenados, reparto por día y meses sin publicar |
-| `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, dividendos imposibles) |
+| `server/test/datos.test.ts` | Corrección de los datos de Yahoo (cambios de ratio, splits informados sin ajustar, dividendos imposibles) |
 | `server/test/diario.test.ts` | Resultado de cada venta, que el Diario de decisiones juzgue en dólares, la comparación contra el mercado, órdenes partidas y cuándo una diferencia puede ser casualidad |
 | `server/test/balance.test.ts` | ¿Y si no hubieras tocado nada? (con la inflación), comisiones (también descontada la inflación), qué pasó con lo que vendiste y patrones del Diario |
 | `server/test/sincronizar.test.ts` | Pedidos a Yahoo: de a pocos, sin insistir después de un error, reintentar si faltó el precio de la última rueda, y que la portada no los espere más de la cuenta |

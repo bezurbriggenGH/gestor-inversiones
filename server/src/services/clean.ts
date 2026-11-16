@@ -80,6 +80,51 @@ export function detectRatioChanges(
   return changes;
 }
 
+/** Cuánto puede alejarse el salto de precio del factor del split para tomarlo como el mismo salto. */
+const SPLIT_TOLERANCE = 0.3;
+
+/**
+ * Splits que Yahoo informa pero cuyo historial dejó sin ajustar.
+ * Lo normal es que, al informar un split, Yahoo ya divida los precios anteriores (YPFD 10:1 del 03/08/2026:
+ * $8.290 el viernes y $8.105 el lunes). A veces no lo hace: MIRG, mismo día y mismo split, pasa de $16.350 a
+ * $1.640. Ahí las operaciones se ajustaban (5 a $17.200 → 50 a $1.720) y los precios viejos no: esas 50
+ * acciones se valuaban a $17.200 cada una ($860.000 en vez de $86.000) hasta el día del split.
+ * Se reconoce porque el precio salta justo ese día por (más o menos) el factor del split. Solo se mira en
+ * splits grandes: uno de 1,01 (un reparto de acciones del 1%) no se distingue de un día normal.
+ * `rows` ordenadas por fecha.
+ */
+export function unadjustedSplits<T extends { date: string; factor: number }>(rows: { date: string; close: number }[], splits: T[]): T[] {
+  return splits.filter((s) => {
+    if (s.factor < JUMP && s.factor > 1 / JUMP) return false;
+    const i = rows.findIndex((r) => r.date >= s.date);
+    if (i <= 0) return false; // sin precios de los dos lados no se puede saber
+    const before = median(rows.slice(Math.max(0, i - WINDOW), i).map((r) => r.close));
+    const after = median(rows.slice(i, i + WINDOW).map((r) => r.close));
+    return Math.abs(before / after / s.factor - 1) <= SPLIT_TOLERANCE;
+  });
+}
+
+/** Lleva a la escala de hoy los precios anteriores a un split informado que quedaron sin ajustar. */
+function fixUnadjustedSplits(ticker: string): void {
+  const rows = all<{ date: string; close: number }>('SELECT date, close FROM prices WHERE ticker = ? ORDER BY date', ticker);
+  const splits = all<{ date: string; factor: number }>('SELECT date, factor FROM split_events WHERE ticker = ? ORDER BY date', ticker);
+  const pending = unadjustedSplits(rows, splits);
+  if (pending.length === 0) return;
+  tx(() => {
+    for (const { date, factor } of pending) {
+      run(
+        `UPDATE prices SET close = close / ?1, open = open / ?1, high = high / ?1, low = low / ?1, volume = volume * ?1
+         WHERE ticker = ?2 AND date < ?3`,
+        factor,
+        ticker,
+        date,
+      );
+      run('UPDATE dividend_events SET amount = amount / ? WHERE ticker = ? AND date < ?', factor, ticker, date);
+    }
+  });
+  console.log(`[datos] ${ticker}: ${pending.length} split(s) informado(s) sin ajustar en el historial, corregido(s)`);
+}
+
 function fixRatioChanges(ticker: string): void {
   const rows = all<{ date: string; close: number }>('SELECT date, close FROM prices WHERE ticker = ? ORDER BY date', ticker);
   // CEDEARs de la tabla: se confirma con el precio de la acción en EE.UU. (lo guarda sync.ts)
@@ -127,6 +172,8 @@ function dropImpossibleDividends(ticker: string): void {
 /** Corrige el historial guardado de un activo. Se puede llamar las veces que sea: si no hay nada que corregir, no cambia nada. */
 export function cleanHistory(ticker: string): void {
   const type = all<{ type: string }>('SELECT type FROM assets WHERE ticker = ?', ticker)[0]?.type;
+  // En acciones y en CEDEARs: acá el split lo informó Yahoo, no se deduce de un salto de precio
+  fixUnadjustedSplits(ticker);
   // Solo en CEDEARs: en acciones locales un salto así puede ser real (por ejemplo, las PASO de 2019)
   if (type === 'CEDEAR') fixRatioChanges(ticker);
   dropImpossibleDividends(ticker);
